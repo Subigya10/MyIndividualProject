@@ -1,0 +1,15 @@
+ContentScale.Crop
+
+It scales the image so that it fills the entire area of the container (Box).
+
+If the image’s aspect ratio doesn’t match the container, it crops the extra parts instead of leaving blank space.
+
+Result: no empty space, the image completely covers the background.
+
+Other common options:
+
+Option	What it does
+Fit	Scales image to fit inside container; may leave empty space
+FillBounds	Stretches image to fill container, can distort it
+Crop	Scales to fill and crops extra parts (keeps aspect ratio)
+Inside	Scales down to fit inside without cropping

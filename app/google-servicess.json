@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "904114594194",
+    "firebase_url": "https://indvidual-ce210-default-rtdb.firebaseio.com",
+    "project_id": "indvidual-ce210",
+    "storage_bucket": "indvidual-ce210.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:904114594194:android:6294ed81bcce74e5d8614b",
+        "android_client_info": {
+          "package_name": "com.example.kotlinnewproject"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBik1md2DsrbPMKlDgJRQ60ltzIe9z1H24"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
