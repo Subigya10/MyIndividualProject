@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,9 +20,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,12 +44,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.lifecycle.ViewModel
 import com.example.kotlinnewproject.model.UserModel
 import com.example.kotlinnewproject.repository.UserRepoImpl
 
 
-import com.example.kotlinnewproject.ui.theme.KotlinnewprojectTheme
+
 import com.example.kotlinnewproject.ui.theme.Pink80
 import com.example.kotlinnewproject.ui.theme.Purple80
 import com.example.kotlinnewproject.viewmodel.UserViewModel
@@ -73,6 +79,7 @@ fun registerme() {
     var ConfirmPassword by remember { mutableStateOf("") }
     val context= LocalContext.current
     val userViewModel = remember { UserViewModel(UserRepoImpl()) }
+    var visibility by remember { mutableStateOf(false) }
 
     Scaffold { padding ->
         Box(
@@ -170,43 +177,96 @@ fun registerme() {
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
-
                         value = Password,
                         onValueChange = { data ->
                             Password = data
-
                         },
-                        placeholder = { Text("Password", color = Color.Black) },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp),
-
+                        placeholder = {
+                            Text("*******")
+                        },
                         colors = TextFieldDefaults.colors(
                             unfocusedContainerColor = Color.White.copy(0.8f),
                             focusedContainerColor = Purple80,
                             focusedIndicatorColor = Pink80,
                             unfocusedIndicatorColor = Color.Transparent
-                        )
-
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp),
+                        visualTransformation = if (visibility)
+                            VisualTransformation.None
+                        else
+                            PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                visibility = !visibility
+                            }) {
+                                Icon(
+                                    painter = if (visibility)
+                                        painterResource(R.drawable.baseline_visibility_off_24)
+                                    else
+                                        painterResource(R.drawable.baseline_visibility_24),
+                                    contentDescription = null
+                                )
+                            }
+                        }
                     )
+
+                    val (strengthText, strengthColor) = when {
+                        Password.isEmpty() -> "" to Color.Transparent  // nothing shown when empty
+                        Password.length < 4 -> "Weak" to Color.Red
+                        Password.length < 8 -> "Medium" to Color.Yellow
+                        else -> "Strong" to Color.Green
+                    }
+
+
+                    Text(
+                        text = "Password strength: $strengthText",
+                        color = strengthColor,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .align(Alignment.Start)
+                            .padding(start = 32.dp, top = 4.dp)
+                    )
+
+
+
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
-
                         value = ConfirmPassword,
                         onValueChange = { data ->
                             ConfirmPassword = data
-
                         },
-                        placeholder = { Text("Confirm Password", color = Color.Black) },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp),
+                        placeholder = {
+                            Text("*******")
+                        },
 
                         colors = TextFieldDefaults.colors(
                             unfocusedContainerColor = Color.White.copy(0.8f),
                             focusedContainerColor = Purple80,
                             focusedIndicatorColor = Pink80,
                             unfocusedIndicatorColor = Color.Transparent
-                        )
+                        ),
 
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp),
+                        visualTransformation = if (visibility) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                visibility = !visibility
+                            }) {
+                                Icon(
+                                    painter = if (visibility)
+                                        painterResource(R.drawable.baseline_visibility_off_24)
+                                    else painterResource(
+                                        R.drawable.baseline_visibility_24
+                                    ),
+
+
+                                    contentDescription = null
+                                )
+                            }
+                        }
                     )
-
 
                 }
 
@@ -336,4 +396,5 @@ fun registerme() {
 fun registerpreview(){
     registerme()
 }
+
 
