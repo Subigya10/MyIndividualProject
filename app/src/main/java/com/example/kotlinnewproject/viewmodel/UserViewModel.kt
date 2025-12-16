@@ -67,10 +67,9 @@ class UserViewModel(val repo: UserRepo): ViewModel() {
 
     }
 
-    fun getAllUser(callback: (Boolean, String, List<UserModel>?) -> Unit){
-        repo.getAllUser {
-                success,msg,data->
-            if(success){
+    fun getAllUser(callback: (Boolean, String, List<UserModel>?) -> Unit) {
+        repo.getAllUser { success, msg, data ->
+            if (success) {
                 _allUsers.postValue(data)
             }
         }
