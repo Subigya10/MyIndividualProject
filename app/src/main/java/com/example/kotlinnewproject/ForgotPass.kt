@@ -46,7 +46,7 @@ fun ForgotPasswordScreen() {
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Background image
+
         Image(
             painter = painterResource(R.drawable.iphone),
             contentDescription = null,
@@ -62,7 +62,7 @@ fun ForgotPasswordScreen() {
                 .padding(top = 120.dp), // adjust vertical position
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Lock icon at top
+
             Image(
                 painter = painterResource(R.drawable.lockmeuppp),
                 contentDescription = "Lock",
@@ -71,7 +71,7 @@ fun ForgotPasswordScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Title
+
             Text(
                 "Forgot Password",
                 color = Color.White,
@@ -91,7 +91,7 @@ fun ForgotPasswordScreen() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Email Card
+
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.8f)),
@@ -116,7 +116,7 @@ fun ForgotPasswordScreen() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Gradient Button
+
             Button(
                 onClick = {
                     if (email.isNotEmpty()) {
@@ -165,7 +165,7 @@ fun ForgotPasswordScreen() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Back to Login clickable text
+
             Text(
                 "Back to Login",
                 color = Color.White,

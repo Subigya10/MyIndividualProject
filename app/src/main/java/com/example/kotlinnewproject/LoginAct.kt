@@ -57,7 +57,7 @@ fun loginScreen() {
         modifier = Modifier
             .fillMaxSize()
     ) {
-        // Background image
+
         Image(
             painter = painterResource(R.drawable.iphone),
             contentDescription = null,
@@ -65,7 +65,7 @@ fun loginScreen() {
             contentScale = ContentScale.Crop
         )
 
-        // Main column
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -103,7 +103,7 @@ fun loginScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Password Card
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.8f)),
                 shape = RoundedCornerShape(12.dp),
@@ -180,7 +180,7 @@ fun loginScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Forgot password
+
             Text(
                 text = "Forgot password?",
                 color = Color.White,
@@ -197,7 +197,7 @@ fun loginScreen() {
 
 
 
-            // Or divider
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -216,7 +216,7 @@ fun loginScreen() {
                         )
                 )
 
-                // Center text
+
                 Text(
                     "⚡ Continue with ⚡",
                     modifier = Modifier.padding(horizontal = 16.dp),

@@ -79,7 +79,7 @@ fun DashboardScreen() {
                     )
                 )
 
-                // Notifications
+
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
@@ -100,7 +100,7 @@ fun DashboardScreen() {
                     )
                 )
 
-                // Profile
+
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },

@@ -111,7 +111,7 @@ fun SquadXISplash(preview: Boolean = false) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Logo on top
+
                 Image(
                     painter = painterResource(R.drawable.newlogo),
                     contentDescription = null,

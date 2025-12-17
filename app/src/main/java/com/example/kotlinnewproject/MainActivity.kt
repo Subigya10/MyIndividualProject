@@ -359,7 +359,7 @@ fun registerme() {
 
 
 
-                // Row for "Already have an account? Login"
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth().padding(horizontal = 30.dp),
@@ -400,7 +400,7 @@ fun registerme() {
                             return@Button
                         }
 
-                        // Register user with Firebase
+
                         userViewModel.register(Email, Password) { success, message, userId ->
                             if (success) {
                                 // Create user model
@@ -413,7 +413,7 @@ fun registerme() {
                                     gender = ""
                                 )
 
-                                // Add user to database
+
                                 userViewModel.addUserToDatabase(
                                     userId,
                                     model
@@ -428,7 +428,7 @@ fun registerme() {
                                     }
                                 }
                             } else {
-                                // Show error message
+
                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -481,7 +481,7 @@ fun registerme() {
                             )
                     )
 
-                    // Center text
+
                     Text(
                         "⚡ Continue with ⚡",
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -510,7 +510,7 @@ fun registerme() {
                         .padding(horizontal = 28.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Facebook Button
+
                     Box(
                         modifier = Modifier
                             .weight(1f)
