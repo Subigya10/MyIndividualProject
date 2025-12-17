@@ -9,29 +9,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -39,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,10 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.example.kotlinnewproject.ui.theme.Pink80
 import com.example.kotlinnewproject.ui.theme.Purple80
 
-
 class ForgetPassword : ComponentActivity() {
-
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -64,8 +43,9 @@ fun ForgotPasswordScreen() {
     var email by remember { mutableStateOf("") }
     val context = LocalContext.current
 
-    Box(modifier = Modifier.fillMaxSize()
-        .background(Color.Black.copy(alpha = 0.4f)) ) {
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
         // Background image
         Image(
             painter = painterResource(R.drawable.iphone),
@@ -79,16 +59,40 @@ fun ForgotPasswordScreen() {
                 .fillMaxWidth()
                 .padding(horizontal = 28.dp)
                 .wrapContentHeight()
-                .padding(top = 150.dp), // adjust vertical position
+                .padding(top = 120.dp), // adjust vertical position
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Forgot Password", color = Color.White, fontSize = 22.sp)
+            // Lock icon at top
+            Image(
+                painter = painterResource(R.drawable.lockmeuppp),
+                contentDescription = "Lock",
+                modifier = Modifier.size(80.dp)
+            )
+
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Enter your email to receive reset link", color = Color.White, fontSize = 14.sp)
+
+            // Title
+            Text(
+                "Forgot Password",
+                color = Color.White,
+                fontSize = 22.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Subtitle / instructions
+            Text(
+                "Enter your email to receive a reset link",
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
 
             // Email Card
-            Card (
+            Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.8f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
@@ -98,7 +102,9 @@ fun ForgotPasswordScreen() {
                     value = email,
                     onValueChange = { email = it },
                     placeholder = { Text("Enter your email", color = Color.Black) },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
                     colors = TextFieldDefaults.colors(
                         unfocusedContainerColor = Color.Transparent,
                         focusedContainerColor = Purple80,
@@ -145,16 +151,27 @@ fun ForgotPasswordScreen() {
                     Text("Send Reset Link", color = Color.White, fontSize = 18.sp)
                 }
             }
+
             Spacer(modifier = Modifier.height(16.dp))
 
-// Back to Login clickable text
+
+            Text(
+                "🔒 Don’t worry, we’ve got your back!",
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Back to Login clickable text
             Text(
                 "Back to Login",
                 color = Color.White,
                 fontSize = 14.sp,
                 textDecoration = TextDecoration.Underline,
-                modifier = Modifier.clickable() {
-                    // Navigate back to Login screen
+                modifier = Modifier.clickable {
                     context.startActivity(Intent(context, LoginAct::class.java))
                 }
             )

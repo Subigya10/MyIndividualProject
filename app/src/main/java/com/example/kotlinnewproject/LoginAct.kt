@@ -1,6 +1,7 @@
 package com.example.kotlinnewproject
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -8,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -146,6 +149,8 @@ fun loginScreen() {
                             .addOnCompleteListener { task ->
                                 if (task.isSuccessful) {
                                     Toast.makeText(context, "Login successful", Toast.LENGTH_SHORT).show()
+                                    val intent = Intent(context, DashboardActivity::class.java)
+                                    context.startActivity(intent)
                                     // Navigate to Dashboard
                                 } else {
                                     Toast.makeText(context, "Login failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
@@ -199,7 +204,7 @@ fun loginScreen() {
                     .padding(vertical = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left gradient line
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -237,46 +242,82 @@ fun loginScreen() {
 
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Facebook
-                Card(
-                    modifier = Modifier.weight(1f).height(58.dp),
-                    shape = RoundedCornerShape(30.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().background(Color(0xFF1877F2)),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.facebook),
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
+                // Facebook Button
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(58.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFF1877F2), Color(0xFF1565C0))
+                            )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Facebook", color = Color.White)
+                        .clickable {
+                            val intent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://www.facebook.com")
+                            )
+                            context.startActivity(intent)
+                        }
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(30.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color.White.copy(alpha = 0.18f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.facebook),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Facebook", color = Color.White, fontWeight = FontWeight.SemiBold)
                     }
                 }
 
-                // Google
-                Card(
-                    modifier = Modifier.weight(1f).height(58.dp),
-                    shape = RoundedCornerShape(30.dp)
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(58.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(Color.White)
+                        .clickable {
+                            val intent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://accounts.google.com")
+                            )
+                            context.startActivity(intent)
+                        }
+                        .border(1.dp, Color.Black.copy(alpha = 0.25f), RoundedCornerShape(30.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().background(Color.White),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.google),
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Google", color = Color.Black)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color.LightGray.copy(alpha = 0.3f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.google),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Google", color = Color.Black, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
