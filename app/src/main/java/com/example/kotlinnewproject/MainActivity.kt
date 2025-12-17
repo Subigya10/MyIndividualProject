@@ -1,6 +1,8 @@
 package com.example.kotlinnewproject
 
 import android.content.Intent
+import android.database.Cursor
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
@@ -47,12 +50,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
 
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.lifecycle.ViewModel
 import com.example.kotlinnewproject.model.UserModel
 import com.example.kotlinnewproject.repository.UserRepoImpl
@@ -300,7 +309,7 @@ fun registerme() {
 
 
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(22.dp))
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = Color.White.copy(alpha = 0.8f)
@@ -309,7 +318,7 @@ fun registerme() {
                         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 28.dp, vertical = 8.dp)
+                            .padding(horizontal = 28.dp)
                     ) {
                         OutlinedTextField(
                             value = ConfirmPassword,
@@ -345,27 +354,37 @@ fun registerme() {
                             singleLine = true // Added for consistency
                         )
                     }
-                }
+
+                    Spacer(modifier = Modifier.height(10.dp))
 
 
 
                 // Row for "Already have an account? Login"
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 28.dp),
+                        .fillMaxWidth().padding(horizontal = 30.dp),
+
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Already have an account? ", color = Color.White.copy(alpha = 0.8f))
+                    Text(
+                        "Already have an account? ",color = Color(0xFFFFE082),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black
+                    )
                     Text(
                         "Login",
-                        color = Color.White,
+                        color =Purple80, fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        textDecoration = TextDecoration.Underline,
+
+
                         modifier = Modifier.clickable {
 
                             context.startActivity(Intent(context, LoginAct::class.java))
                         }
                     )
+                }
                 }
                 Button(
                     onClick = {
@@ -417,6 +436,8 @@ fun registerme() {
                     modifier = Modifier
                         .width(600.dp)
                         .height(65.dp),
+
+
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.Transparent
                     ),
@@ -443,66 +464,127 @@ fun registerme() {
 
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp),
                     verticalAlignment = Alignment.CenterVertically
-
                 ) {
-                    HorizontalDivider(
-                        modifier = Modifier.weight(1f), color = Color.White
+                    // Left gradient line
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(2.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFF4A00E0), Color(0xFF8E2DE2))
+                                )
+                            )
                     )
-                    Text("Or", modifier = Modifier.padding(horizontal = 20.dp), color = Color.White)
 
-                    HorizontalDivider(
-                        modifier = Modifier.weight(1f), color = Color.White
+                    // Center text
+                    Text(
+                        "⚡ Continue with ⚡",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(2.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFF4A00E0), Color(0xFF8E2DE2))
+                                )
+                            )
                     )
                 }
+
 
                 Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(horizontal = 15.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Card(
+                    // Facebook Button
+                    Box(
                         modifier = Modifier
-                            .height(60.dp)
                             .weight(1f)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Image(
-                                painter = painterResource(R.drawable.google),
-                                contentDescription = null,
-                                modifier = Modifier.size(30.dp)
+                            .height(58.dp)
+                            .clip(RoundedCornerShape(30.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF1877F2), Color(0xFF1565C0))
+                                )
                             )
-                            Spacer(modifier = Modifier.width(20.dp))
-                            Text("Facebook")
+                            .clickable {
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://www.facebook.com")
+                                )
+                                context.startActivity(intent)
+                            }
+                            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(30.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(Color.White.copy(alpha = 0.18f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.facebook),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Facebook", color = Color.White, fontWeight = FontWeight.SemiBold)
                         }
                     }
-                    Spacer(
-                        modifier = Modifier.width(20.dp)
-                    )
-                    Card(
+
+
+                    Box(
                         modifier = Modifier
-                            .height(60.dp)
-                            .weight(1f),
+                            .weight(1f)
+                            .height(58.dp)
+                            .clip(RoundedCornerShape(30.dp))
+                            .background(Color.White)
+                            .clickable {
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://accounts.google.com")
+                                )
+                                context.startActivity(intent)
+                            }
+                            .border(1.dp, Color.Gray.copy(alpha = 0.25f), RoundedCornerShape(30.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Image(
-                                painter = painterResource(R.drawable.google),
-                                contentDescription = null,
-                                modifier = Modifier.size(30.dp)
-                            )
-                            Spacer(modifier = Modifier.width(20.dp))
-                            Text("Google")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(Color.LightGray.copy(alpha = 0.3f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.google),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Google", color = Color.Black, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
+
 
             }
         }
