@@ -1,5 +1,6 @@
 package com.example.kotlinnewproject
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -52,6 +53,7 @@ fun loginScreen() {
     var password by remember { mutableStateOf("") }
     var visibility by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val activity=context as Activity
 
     Box(
         modifier = Modifier
@@ -91,6 +93,13 @@ fun loginScreen() {
                     value = email,
                     onValueChange = { email = it },
                     placeholder = { Text("Email", color = Color.Black) },
+                    leadingIcon = {
+                        Image(
+                            painter = painterResource(R.drawable.baseline_alternate_email_24),
+                            contentDescription = null
+
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     colors = TextFieldDefaults.colors(
                         unfocusedContainerColor = Color.Transparent,
@@ -114,6 +123,13 @@ fun loginScreen() {
                     value = password,
                     onValueChange = { password = it },
                     placeholder = { Text("Password", color = Color.Black) },
+                    leadingIcon = {
+                        Image(
+                            painter = painterResource(R.drawable.baseline_key_24),
+                            contentDescription = null
+
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     colors = TextFieldDefaults.colors(
                         unfocusedContainerColor = Color.Transparent,
@@ -341,8 +357,7 @@ fun loginScreen() {
                     textDecoration = TextDecoration.Underline,
                     modifier = Modifier.clickable {
                         // Navigate to Sign Up screen
-                        val intent = Intent(context, MainActivity::class.java)
-                        context.startActivity(intent)
+                        activity.finish()
                     }
                 )
             }

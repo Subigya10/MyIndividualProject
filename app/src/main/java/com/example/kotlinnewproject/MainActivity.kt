@@ -30,6 +30,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,7 +71,9 @@ import com.example.kotlinnewproject.repository.UserRepoImpl
 
 
 import com.example.kotlinnewproject.ui.theme.Pink80
+import com.example.kotlinnewproject.ui.theme.Purple40
 import com.example.kotlinnewproject.ui.theme.Purple80
+import com.example.kotlinnewproject.ui.theme.PurpleGrey80
 import com.example.kotlinnewproject.viewmodel.UserViewModel
 
 class MainActivity : ComponentActivity() {
@@ -97,6 +101,7 @@ fun registerme() {
     val userViewModel = remember { UserViewModel(UserRepoImpl()) }
     var visibility by remember { mutableStateOf(false) }
     var confirmPasswordVisibility by remember { mutableStateOf(false) }
+    var checkbox by remember { mutableStateOf(false) }
 
     Scaffold { padding ->
         Box(
@@ -187,7 +192,7 @@ fun registerme() {
                         OutlinedTextField(
                             value = LastName,
                             onValueChange = { LastName = it },
-                            placeholder = { Text("Last Name", color = Color.Black) },
+                            placeholder = { Text("Last Name(optional)", color = Color.Black) },
                             leadingIcon = {
                                 Image(
                                     painter = painterResource(R.drawable.baseline_short_text_24),
@@ -354,6 +359,27 @@ fun registerme() {
                             singleLine = true // Added for consistency
                         )
                     }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp),
+                        verticalAlignment = Alignment.CenterVertically
+
+                    ) {
+
+                        Checkbox(
+                            checked = checkbox,
+                            onCheckedChange = {checkbox=it},
+                            colors = CheckboxDefaults.colors(
+                                uncheckedColor = Color.White,
+                                checkmarkColor = Color.Blue,
+                                checkedColor = Color.White
+
+                            )
+                        )
+                        Text("I agree to terms & Conditions", color = Color.White, fontWeight = FontWeight.ExtraBold)
+
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -374,7 +400,7 @@ fun registerme() {
                     )
                     Text(
                         "Login",
-                        color =Purple80, fontSize = 16.sp,
+                        color = PurpleGrey80, fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
                         textDecoration = TextDecoration.Underline,
 
@@ -388,15 +414,34 @@ fun registerme() {
                 }
                 Button(
                     onClick = {
-                        if (Email.isEmpty() || Password.isEmpty() || FirstName.isEmpty() || LastName.isEmpty()) {
+
+
+                        if (Email.isEmpty() || Password.isEmpty() || FirstName.isEmpty()) {
                             Toast.makeText(context, "Please fill all fields", Toast.LENGTH_SHORT)
                                 .show()
+                            return@Button
+                        }
+
+                        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(Email).matches()) {
+                            Toast.makeText(
+                                context,
+                                "Please enter a valid email",
+                                Toast.LENGTH_SHORT
+                            ).show()
                             return@Button
                         }
 
                         if (Password != ConfirmPassword) {
                             Toast.makeText(context, "Passwords do not match", Toast.LENGTH_SHORT)
                                 .show()
+                            return@Button
+                        }
+                        if (!checkbox) {
+                            Toast.makeText(
+                                context,
+                                "Please accept Terms & Conditions",
+                                Toast.LENGTH_SHORT
+                            ).show()
                             return@Button
                         }
 

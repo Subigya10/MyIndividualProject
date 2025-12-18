@@ -1,5 +1,6 @@
 package com.example.kotlinnewproject
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -42,6 +43,7 @@ class ForgetPassword : ComponentActivity() {
 fun ForgotPasswordScreen() {
     var email by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val activity=context as Activity
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -102,6 +104,13 @@ fun ForgotPasswordScreen() {
                     value = email,
                     onValueChange = { email = it },
                     placeholder = { Text("Enter your email", color = Color.Black) },
+                    leadingIcon = {
+                        Image(
+                            painter = painterResource(R.drawable.baseline_alternate_email_24),
+                            contentDescription = null
+
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
@@ -172,7 +181,7 @@ fun ForgotPasswordScreen() {
                 fontSize = 14.sp,
                 textDecoration = TextDecoration.Underline,
                 modifier = Modifier.clickable {
-                    context.startActivity(Intent(context, LoginAct::class.java))
+                    activity.finish()
                 }
             )
         }
