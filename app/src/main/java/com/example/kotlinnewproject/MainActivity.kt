@@ -261,7 +261,7 @@ fun registerme() {
                         OutlinedTextField(
                             value = Password,
                             onValueChange = { Password = it },
-                            placeholder = { Text("Password") },
+                            placeholder = { Text("Password" , color = Color.Black)},
                             leadingIcon = {
                                 Image(
                                     painter = painterResource(R.drawable.baseline_key_24),

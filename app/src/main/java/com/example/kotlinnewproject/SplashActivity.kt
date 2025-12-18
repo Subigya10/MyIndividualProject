@@ -51,7 +51,7 @@ fun SquadXISplash(preview: Boolean = false) {
         LaunchedEffect(Unit) {
             delay(2500)
             activity?.let {
-                context.startActivity(Intent(context, MainActivity::class.java))
+                context.startActivity(Intent(context, WelcomeActivity::class.java))
                 it.finish()
             }
         }
