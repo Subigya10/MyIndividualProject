@@ -1,16 +1,32 @@
 package com.example.kotlinnewproject
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -21,120 +37,82 @@ class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val userName = intent.getStringExtra("userName") ?: "Player"
+        val userEmail = intent.getStringExtra("userEmail") ?: ""
         setContent {
-            DashboardScreen()
+            DashboardScreen(userName = userName, userEmail = userEmail)
         }
     }
 }
 
+
 @Composable
-fun DashboardScreen() {
+fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
+    val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
         bottomBar = {
             NavigationBar(
-                containerColor = Color.White,
+                containerColor = Color(0xFF1A1A2E),
                 modifier = Modifier.height(80.dp)
             ) {
-                // Home
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.outline_add_home_24),
-                            contentDescription = "Home",
-                            modifier = Modifier.size(28.dp)
-                        )
-                    },
-                    label = { Text("Home", fontSize = 12.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color(0xFF8E2DE2),
-                        selectedTextColor = Color(0xFF8E2DE2),
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray,
-                        indicatorColor = Color(0xFF8E2DE2).copy(alpha = 0.1f)
-                    )
+                val tabs = listOf("Home", "Leagues", "Alerts", "Profile")
+                val icons = listOf(
+                    R.drawable.outline_add_home_24,
+                    R.drawable.baseline_search_24,
+                    R.drawable.baseline_notifications_24,
+                    R.drawable.baseline_person_24
                 )
 
-                // Search
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.baseline_search_24),
-                            contentDescription = "Search",
-                            modifier = Modifier.size(28.dp)
+                tabs.forEachIndexed { index, title ->
+                    NavigationBarItem(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        icon = {
+                            Icon(
+                                painter = painterResource(icons[index]),
+                                contentDescription = title,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        },
+                        label = { Text(title, fontSize = 11.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFF8E2DE2),
+                            selectedTextColor = Color(0xFF8E2DE2),
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray,
+                            indicatorColor = Color(0xFF8E2DE2).copy(alpha = 0.1f)
                         )
-                    },
-                    label = { Text("Search", fontSize = 12.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color(0xFF8E2DE2),
-                        selectedTextColor = Color(0xFF8E2DE2),
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray,
-                        indicatorColor = Color(0xFF8E2DE2).copy(alpha = 0.1f)
                     )
-                )
-
-
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.baseline_notifications_24),
-                            contentDescription = "Notifications",
-                            modifier = Modifier.size(28.dp)
-                        )
-                    },
-                    label = { Text("Alerts", fontSize = 12.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color(0xFF8E2DE2),
-                        selectedTextColor = Color(0xFF8E2DE2),
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray,
-                        indicatorColor = Color(0xFF8E2DE2).copy(alpha = 0.1f)
-                    )
-                )
-
-
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.baseline_person_24),
-                            contentDescription = "Profile",
-                            modifier = Modifier.size(28.dp)
-                        )
-                    },
-                    label = { Text("Profile", fontSize = 12.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color(0xFF8E2DE2),
-                        selectedTextColor = Color(0xFF8E2DE2),
-                        unselectedIconColor = Color.Gray,
-                        unselectedTextColor = Color.Gray,
-                        indicatorColor = Color(0xFF8E2DE2).copy(alpha = 0.1f)
-                    )
-                )
+                }
             }
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(Color(0xFFF5F5F5)),
-            contentAlignment = Alignment.Center
-        ) {
-            when (selectedTab) {
-                0 -> HomeContent()
-                1 -> SearchContent()
-                2 -> NotificationsContent()
-                3 -> ProfileContent()
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Background Stadium Image with dark tint built in
+            Image(
+                painter = painterResource(R.drawable.iphone),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
+                    Color.Black.copy(alpha = 0.55f),
+                    blendMode = androidx.compose.ui.graphics.BlendMode.Darken
+                )
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                when (selectedTab) {
+                    0 -> HomeContent()
+                    1 -> LeaguesContent()
+                    2 -> CenterText(text = "Alerts Coming Soon")
+                    3 -> ProfileContent(userName = userName, userEmail = userEmail)
+                }
             }
         }
     }
@@ -142,54 +120,553 @@ fun DashboardScreen() {
 
 @Composable
 fun HomeContent() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    val context = LocalContext.current
+    // 0 = Football, 1 = Cricket
+    var selectedSport by remember { mutableStateOf(0) }
+
+    val footballMatches = listOf(
+        Triple("Premier League", "MAN UTD vs ARS", "02:30:00"),
+        Triple("La Liga", "BAR vs RMA", "05:00:00"),
+        Triple("Serie A", "JUV vs MIL", "08:15:00"),
+        Triple("Bundesliga", "BAY vs DOR", "11:00:00")
+    )
+
+    val cricketMatches = listOf(
+        Triple("IPL T20", "IND vs AUS", "03:15:20"),
+        Triple("Test Match", "ENG vs PAK", "06:00:00"),
+        Triple("ODI Series", "SA vs NZ", "09:30:00"),
+        Triple("T20 WC", "WI vs SL", "12:45:00")
+    )
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 100.dp)
     ) {
-        Text("🏠 Home", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Welcome to Dashboard", fontSize = 16.sp, color = Color.Gray)
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        // TOP BAR
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painterResource(R.drawable.baseline_key_24),
+                        "trophy",
+                        tint = Color(0xFFFFD700),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        " Fantasy Sports",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Color.White.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.baseline_key_24),
+                                null,
+                                tint = Color(0xFFFFD700),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                " 1,250",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.Gray)
+                    )
+                }
+            }
+        }
+
+        // ⚽ 🏏 SPORT TOGGLE
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(Color.White.copy(alpha = 0.1f))
+                    .padding(4.dp)
+            ) {
+                listOf("⚽  Football", "🏏  Cricket").forEachIndexed { index, label ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(
+                                if (selectedSport == index)
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
+                                    )
+                                else
+                                    Brush.horizontalGradient(
+                                        listOf(Color.Transparent, Color.Transparent)
+                                    )
+                            )
+                            .clickable { selectedSport = index }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            label,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // MY TEAM POINTS CARD
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF1565C0), Color(0xFF8E2DE2))
+                        )
+                    )
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Text(
+                        "My Team This Week",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "342 pts",
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 32.sp
+                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Rank", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                            Text(
+                                "#4 / 128",
+                                color = Color(0xFFFFE082),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        if (selectedSport == 0) "⚽ Football League • Gameweek 28"
+                        else "🏏 Cricket League • Match 14",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
+        // ACTION CARDS
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                BigActionCard(
+                    title = "Create Team",
+                    sub = "Build Your Squad",
+                    gradient = listOf(Color(0xFFFF5F6D), Color(0xFFFFC371)),
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        context.startActivity(Intent(context, CreateTeamActivity::class.java))
+                    }
+                )
+                BigActionCard(
+                    title = "Join Contest",
+                    sub = "Enter & Compete",
+                    gradient = listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // UPCOMING MATCHES
+        item {
+            Text(
+                if (selectedSport == 0) "⚽ Upcoming Matches" else "🏏 Upcoming Matches",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val matchList = if (selectedSport == 0) footballMatches else cricketMatches
+                items(matchList) { match ->
+                    MatchCard(league = match.first, teams = match.second, time = match.third)
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
 
 @Composable
-fun SearchContent() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+fun BigActionCard(title: String, sub: String, gradient: List<Color>, modifier: Modifier, onClick: () -> Unit = {}) {
+
+        Card(
+            modifier = modifier.height(180.dp).clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(8.dp)
     ) {
-        Text("🔍 Search", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Find what you need", fontSize = 16.sp, color = Color.Gray)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(gradient))
+                .padding(16.dp)
+        ) {
+            Column(modifier = Modifier.align(Alignment.BottomStart)) {
+                Text(
+                    title,
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp
+                )
+                Text(sub, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    color = Color.White.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.clickable { onClick() }
+                ) {
+                    Text(
+                        "Join Now",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = Color.White,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun NotificationsContent() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+fun MatchCard(
+    league: String = "IPL T20",
+    teams: String = "IND vs AUS",
+    time: String = "03:15:20"
+) {
+    Card(
+        modifier = Modifier.width(180.dp).height(110.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
     ) {
-        Text("🔔 Notifications", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("You have no new alerts", fontSize = 16.sp, color = Color.Gray)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(league, color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(teams, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.weight(1.0f))
+            Text(
+                "Starts in: $time",
+                color = Color(0xFFFFE082),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
 @Composable
-fun ProfileContent() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("👤 Profile", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Manage your account", fontSize = 16.sp, color = Color.Gray)
+fun CenterText(text: String) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text, fontSize = 24.sp, color = Color.White)
     }
 }
 
-@Preview()
 @Composable
-fun DashboardPreview() {
-    DashboardScreen()
+fun LeaguesContent() {
+    val footballLeagues = listOf(
+        Triple("Premier Fantasy League", "14 players", "#2  •  342 pts"),
+        Triple("Champions League Cup", "8 players", "#1  •  410 pts"),
+        Triple("La Liga Fantasy", "10 players", "#5  •  280 pts")
+    )
+    val cricketLeagues = listOf(
+        Triple("IPL Fantasy League", "12 players", "#3  •  310 pts"),
+        Triple("T20 World Cup", "20 players", "#7  •  255 pts"),
+        Triple("Test Match Fantasy", "6 players", "#2  •  390 pts")
+    )
+
+    var selectedSport by remember { mutableStateOf(0) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        item {
+            Text("🏆 My Leagues", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50.dp))
+                    .background(Color.White.copy(alpha = 0.1f)).padding(4.dp)
+            ) {
+                listOf("⚽  Football", "🏏  Cricket").forEachIndexed { index, label ->
+                    Box(
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(50.dp))
+                            .background(
+                                if (selectedSport == index)
+                                    Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
+                                else
+                                    Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                            )
+                            .clickable { selectedSport = index }.padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFFFF5F6D), Color(0xFFFFC371))))
+                        .clickable { }.padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("+ Create League", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+                Box(
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
+                        .clickable { }.padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🔗 Join League", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+        }
+
+        val currentLeagues = if (selectedSport == 0) footballLeagues else cricketLeagues
+        items(currentLeagues) { league ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(league.first, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(league.second, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Rank", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
+                        Text(league.third, color = Color(0xFFFFE082), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+    }
+}
+
+@Composable
+fun ProfileContent(userName: String = "Player", userEmail: String = "") {
+    val context = LocalContext.current
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        // PROFILE HEADER
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(90.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🏆", fontSize = 36.sp)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(userName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(userEmail, color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    color = Color(0xFF8E2DE2).copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text(
+                        "⭐ Pro Player",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = Color(0xFFFFE082),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // STATS ROW
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                StatItem("1,250", "Total Pts")
+                VerticalDivider()
+                StatItem("6", "Leagues")
+                VerticalDivider()
+                StatItem("#2", "Best Rank")
+            }
+        }
+
+        // FOOTBALL STATS
+        item {
+            Text("⚽ Football Stats", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MiniStatCard("410 pts", "Best Score", Color(0xFFFF5F6D), Color(0xFFFFC371), Modifier.weight(1f))
+                MiniStatCard("28", "Gameweeks", Color(0xFF1565C0), Color(0xFF8E2DE2), Modifier.weight(1f))
+            }
+        }
+
+        // CRICKET STATS
+        item {
+            Text("🏏 Cricket Stats", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MiniStatCard("390 pts", "Best Score", Color(0xFF11998e), Color(0xFF38ef7d), Modifier.weight(1f))
+                MiniStatCard("14", "Matches", Color(0xFFf7971e), Color(0xFFffd200), Modifier.weight(1f))
+            }
+        }
+
+        // SETTINGS
+        item {
+            Text("Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(
+                    "🔔  Notifications",
+                    "🔒  Privacy",
+                    "🎨  Appearance",
+                    "❓  Help & Support",
+                    "🚪  Logout"
+                ).forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.07f))
+                            .clickable {
+                                if (option == "🚪  Logout") {
+                                    com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                                    val intent = Intent(context, LoginAct::class.java)
+                                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    context.startActivity(intent)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(option, color = Color.White, fontSize = 14.sp)
+                        Text("›", color = Color.White.copy(alpha = 0.4f), fontSize = 20.sp)
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+    }
+}
+
+@Composable
+fun StatItem(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+        Text(label, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
+    }
+}
+
+@Composable
+fun VerticalDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(40.dp)
+            .background(Color.White.copy(alpha = 0.15f))
+    )
+}
+
+@Composable
+fun MiniStatCard(value: String, label: String, colorStart: Color, colorEnd: Color, modifier: Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brush.horizontalGradient(listOf(colorStart, colorEnd)))
+            .padding(16.dp)
+    ) {
+        Column {
+            Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+            Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+        }
+    }
 }

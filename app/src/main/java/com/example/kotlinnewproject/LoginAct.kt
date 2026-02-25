@@ -66,6 +66,11 @@ fun loginScreen() {
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f))
+        )
 
 
         Column(
@@ -165,9 +170,21 @@ fun loginScreen() {
                             .addOnCompleteListener { task ->
                                 if (task.isSuccessful) {
                                     Toast.makeText(context, "Login successful", Toast.LENGTH_SHORT).show()
-                                    val intent = Intent(context, DashboardActivity::class.java)
-                                    context.startActivity(intent)
-                                    // Navigate to Dashboard
+                                    val userId = auth.currentUser?.uid ?: ""
+                                    val userEmail = auth.currentUser?.email ?: ""
+                                    val db = com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com").getReference("Users").child(userId)
+                                    db.get().addOnSuccessListener { snapshot ->
+                                        val firstName = snapshot.child("firstName").value?.toString() ?: "Player"
+                                        val lastName = snapshot.child("lastName").value?.toString() ?: ""
+                                        val fullName = "$firstName $lastName".trim()
+                                        Toast.makeText(context, "Got: $fullName", Toast.LENGTH_LONG).show()
+                                        val intent = Intent(context, DashboardActivity::class.java)
+                                        intent.putExtra("userName", fullName)
+                                        intent.putExtra("userEmail", userEmail)
+                                        context.startActivity(intent)
+                                    }.addOnFailureListener {
+                                        Toast.makeText(context, "DB Error: ${it.message}", Toast.LENGTH_LONG).show()
+                                    }
                                 } else {
                                     Toast.makeText(context, "Login failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
                                 }

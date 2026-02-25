@@ -116,6 +116,12 @@ fun registerme() {
                 contentScale = ContentScale.Crop
             )
 
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+            )
+
 
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -124,7 +130,7 @@ fun registerme() {
             ) {
 
                 Spacer(modifier = Modifier.height(70.dp))
-                Text("Create a fantasy app", fontSize = 20.sp, color = Color.White)
+                Text("Create a fantasy app", fontSize = 20.sp,fontWeight = FontWeight.ExtraBold, color = Color.White)
 
                 Spacer(modifier = Modifier.height(10.dp))
 

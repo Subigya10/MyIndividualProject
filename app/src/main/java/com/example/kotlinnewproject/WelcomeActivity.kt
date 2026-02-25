@@ -75,7 +75,7 @@ fun SplashScreen() {
         ) {
             Spacer(modifier = Modifier.height(80.dp))  // Was 40.dp → now 80.dp
 
-            // "Welcome to SquadXI" with "SquadXI" in purple
+
             Text(
                 text = "Welcome to ",
                 fontSize = 28.sp,

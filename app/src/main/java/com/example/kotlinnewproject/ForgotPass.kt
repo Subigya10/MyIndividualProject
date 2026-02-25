@@ -49,12 +49,20 @@ fun ForgotPasswordScreen() {
         modifier = Modifier.fillMaxSize()
     ) {
 
+
         Image(
             painter = painterResource(R.drawable.iphone),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f))
+        )
+
 
         Column(
             modifier = Modifier
