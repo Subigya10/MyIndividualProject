@@ -91,7 +91,7 @@ fun CreateTeamScreen() {
     val currentPlayers = if (selectedSport == 0) footballPlayers else cricketPlayers
     val currentPositions = if (selectedSport == 0) footballPositions else cricketPositions
     val maxPlayers = 11
-    val totalBudget = 100.0
+    val totalBudget = 170
 
     val selectedPlayerObjects = currentPlayers.filter { it.name in selectedPlayers }
     val usedBudget = selectedPlayerObjects.sumOf { it.credits }
@@ -104,6 +104,7 @@ fun CreateTeamScreen() {
             painter = painterResource(R.drawable.iphone),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
+
             contentScale = ContentScale.Crop,
             colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
                 Color.Black.copy(alpha = 0.55f),
@@ -114,7 +115,7 @@ fun CreateTeamScreen() {
         Column(modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .navigationBarsPadding()
+//            .navigationBarsPadding()
         ) {
 
             // TOP BAR
@@ -254,9 +255,9 @@ fun CreateTeamScreen() {
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 16.dp),
+                    .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 16.dp)
+                contentPadding = PaddingValues(bottom = 80.dp)
             ) {
                 items(filteredPlayers) { player ->
                     val isSelected = player.name in selectedPlayers
@@ -337,28 +338,63 @@ fun CreateTeamScreen() {
             }
 
             // SAVE TEAM BUTTON
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (selectedPlayers.size == maxPlayers)
-                            Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
-                        else
-                            Brush.horizontalGradient(listOf(Color.Gray.copy(alpha = 0.4f), Color.Gray.copy(alpha = 0.4f)))
-                    )
-                    .clickable(enabled = selectedPlayers.size == maxPlayers) { }
-                    .padding(vertical = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (selectedPlayers.size == maxPlayers) "✅ Save Team" else "Select ${maxPlayers - selectedPlayers.size} more players",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+
+        }
+        // SAVE TEAM BUTTON (CORRECT PLACE)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter) // ✅ works here
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(16.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (selectedPlayers.size == maxPlayers)
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
+                        )
+                    else
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Gray.copy(alpha = 0.4f),
+                                Color.Gray.copy(alpha = 0.4f)
+                            )
+                        )
                 )
-            }
+                .clickable(enabled = selectedPlayers.size == maxPlayers) {
+                    val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                    val db = com.google.firebase.database.FirebaseDatabase
+                        .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                        .getReference("Users").child(userId).child("team")
+
+                    val teamData = mapOf(
+                        "sport" to if (selectedSport == 0) "Football" else "Cricket",
+                        "players" to selectedPlayers.toList(),
+                        "totalCredits" to usedBudget,
+                        "savedAt" to System.currentTimeMillis()
+                    )
+
+                    db.setValue(teamData)
+                        .addOnSuccessListener {
+                            android.widget.Toast.makeText(context, "✅ Team saved!", android.widget.Toast.LENGTH_SHORT).show()
+                            (context as? CreateTeamActivity)?.finish()
+                        }
+                        .addOnFailureListener {
+                            android.widget.Toast.makeText(context, "❌ Failed: ${it.message}", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                }
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                if (selectedPlayers.size == maxPlayers)
+                    "✅ Save Team"
+                else
+                    "Select ${maxPlayers - selectedPlayers.size} more players",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
         }
     }
 }
