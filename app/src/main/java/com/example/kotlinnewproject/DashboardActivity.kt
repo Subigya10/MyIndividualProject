@@ -110,7 +110,7 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
                 when (selectedTab) {
                     0 -> HomeContent()
                     1 -> LeaguesContent()
-                    2 -> CenterText(text = "Alerts Coming Soon")
+                    2 -> AlertsContent()
                     3 -> ProfileContent(userName = userName, userEmail = userEmail)
                 }
             }
@@ -668,5 +668,74 @@ fun MiniStatCard(value: String, label: String, colorStart: Color, colorEnd: Colo
             Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
             Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
         }
+    }
+}
+
+@Composable
+fun AlertsContent() {
+    val alerts = listOf(
+        Triple("⚽ Football", "Premier League Fantasy Cup is now open! Join before kickoff.", "2 mins ago"),
+        Triple("🏏 Cricket", "IPL Mega Contest — ₹50 Lakh prize pool. Limited spots!", "15 mins ago"),
+        Triple("⚽ Football", "Champions League Weekly Contest just dropped. 500 players max.", "1 hr ago"),
+        Triple("🏏 Cricket", "T20 World Cup Special Contest — Free entry today only!", "3 hrs ago"),
+        Triple("⚽ Football", "La Liga Fantasy Contest open. Top 3 win cash prizes.", "5 hrs ago"),
+        Triple("🏏 Cricket", "Test Match Contest now live. Build your best XI!", "Yesterday")
+    )
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 20.dp)
+    ) {
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+        item {
+            Text("🔔 Alerts", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+        }
+        items(alerts) { alert ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                    .padding(14.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🎯", fontSize = 20.sp)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(alert.first, color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(alert.third, color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(alert.second, color = Color.White, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
+                            .clickable { }
+                            .padding(horizontal = 12.dp, vertical = 5.dp)
+                    ) {
+                        Text("Join Now", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
