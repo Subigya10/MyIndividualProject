@@ -31,6 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -145,23 +147,68 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
 fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<String>, userCoins: Int = 1250) {
     val context = LocalContext.current
     var selectedSport by remember { mutableStateOf(0) }
-    val footballMatches = listOf(
-        Triple("Premier League", "MAN UTD vs ARS", "02:30:00"),
-        Triple("La Liga", "BAR vs RMA", "05:00:00"),
-        Triple("Serie A", "JUV vs MIL", "08:15:00"),
-        Triple("Bundesliga", "BAY vs DOR", "11:00:00")
-    )
-    val cricketMatches = listOf(
-        Triple("IPL T20", "IND vs AUS", "03:15:20"),
-        Triple("Test Match", "ENG vs PAK", "06:00:00"),
-        Triple("ODI Series", "SA vs NZ", "09:30:00"),
-        Triple("T20 WC", "WI vs SL", "12:45:00")
-    )
+
+    // Real matches from API/Firebase — same source as MatchSelectionActivity
+    var footballMatches by remember { mutableStateOf<List<Match>>(emptyList()) }
+    var cricketMatches by remember { mutableStateOf<List<Match>>(emptyList()) }
+    var isLoadingFootball by remember { mutableStateOf(true) }
+    var isLoadingCricket by remember { mutableStateOf(true) }
+
+    val apiKey = "ab525c6736ef4253a78343b517589979"
+
+    LaunchedEffect(Unit) {
+        try {
+            val response = withContext(Dispatchers.IO) { FootballApi.service.getPLMatches(apiKey) }
+            footballMatches = response.matches
+                .filter { it.status == "SCHEDULED" || it.status == "TIMED" }
+                .take(8)
+                .map { m ->
+                    Match(
+                        homeTeam = m.homeTeam.shortName ?: m.homeTeam.name,
+                        awayTeam = m.awayTeam.shortName ?: m.awayTeam.name,
+                        homeTeamId = m.homeTeam.id,
+                        awayTeamId = m.awayTeam.id,
+                        date = m.utcDate.take(10),
+                        competition = "Premier League",
+                        sport = "football"
+                    )
+                }
+        } catch (e: Exception) { footballMatches = emptyList() }
+        isLoadingFootball = false
+    }
+
+    LaunchedEffect(Unit) {
+        val db = com.google.firebase.database.FirebaseDatabase
+            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+            .getReference("cricket").child("matches")
+        db.get().addOnSuccessListener { snapshot ->
+            val seen = mutableSetOf<String>()
+            val matches = mutableListOf<Match>()
+            snapshot.children.forEach { child ->
+                val homeTeam = child.child("homeTeam").value?.toString() ?: ""
+                val awayTeam = child.child("awayTeam").value?.toString() ?: ""
+                val date = child.child("date").value?.toString() ?: ""
+                val competition = child.child("competition").value?.toString() ?: "T20 World Cup"
+                val key = "$homeTeam-$awayTeam-$date"
+                if (key !in seen && homeTeam.isNotEmpty() && awayTeam.isNotEmpty()) {
+                    seen.add(key)
+                    matches.add(Match(homeTeam = homeTeam, awayTeam = awayTeam, homeTeamId = 0, awayTeamId = 0, date = date, competition = competition, sport = "cricket"))
+                }
+            }
+            cricketMatches = matches
+            isLoadingCricket = false
+        }.addOnFailureListener { isLoadingCricket = false }
+    }
+
     val currentTeamPlayers = if (selectedSport == 0) footballTeamPlayers else cricketTeamPlayers
     val currentSportLabel = if (selectedSport == 0) "Football" else "Cricket"
+    val currentMatches = if (selectedSport == 0) footballMatches else cricketMatches
+    val isLoading = if (selectedSport == 0) isLoadingFootball else isLoadingCricket
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 100.dp)) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        // Header
         item {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -179,6 +226,8 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
                 }
             }
         }
+
+        // Sport Toggle
         item {
             Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50.dp)).background(Color.White.copy(alpha = 0.1f)).padding(4.dp)) {
                 listOf("⚽  Football", "🏏  Cricket").forEachIndexed { index, label ->
@@ -191,6 +240,8 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
                 }
             }
         }
+
+        // My Team Card
         item {
             Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF1565C0), Color(0xFF8E2DE2)))).padding(16.dp)) {
                 Column {
@@ -206,39 +257,37 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
                         Text(currentTeamPlayers.joinToString(", "), color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(
-                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.2f)).clickable {
-                                    val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                                    val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
-                                    com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-                                        .getReference("Users").child(userId).child(sportNode).get().addOnSuccessListener { snapshot ->
-                                            val intent = Intent(context, CreateTeamActivity::class.java).apply {
-                                                putExtra("sport", if (selectedSport == 0) "football" else "cricket")
-                                                putExtra("homeTeamName", snapshot.child("homeTeamName").value?.toString() ?: "")
-                                                putExtra("awayTeamName", snapshot.child("awayTeamName").value?.toString() ?: "")
-                                                putExtra("homeTeamId", (snapshot.child("homeTeamId").value as? Long)?.toInt() ?: 0)
-                                                putExtra("awayTeamId", (snapshot.child("awayTeamId").value as? Long)?.toInt() ?: 0)
-                                                putExtra("editMode", true)
-                                                putExtra("editSport", currentSportLabel)
-                                            }
-                                            context.startActivity(intent)
+                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.2f)).clickable {
+                                val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
+                                com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                    .getReference("Users").child(userId).child(sportNode).get().addOnSuccessListener { snapshot ->
+                                        val intent = Intent(context, CreateTeamActivity::class.java).apply {
+                                            putExtra("sport", if (selectedSport == 0) "football" else "cricket")
+                                            putExtra("homeTeamName", snapshot.child("homeTeamName").value?.toString() ?: "")
+                                            putExtra("awayTeamName", snapshot.child("awayTeamName").value?.toString() ?: "")
+                                            putExtra("homeTeamId", (snapshot.child("homeTeamId").value as? Long)?.toInt() ?: 0)
+                                            putExtra("awayTeamId", (snapshot.child("awayTeamId").value as? Long)?.toInt() ?: 0)
+                                            putExtra("editMode", true)
+                                            putExtra("editSport", currentSportLabel)
                                         }
-                                }.padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) { Text("✏️ Edit Team", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                            Box(
-                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFFF5F6D).copy(alpha = 0.7f)).clickable {
-                                    val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                                    val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
-                                    com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-                                        .getReference("Users").child(userId).child(sportNode).removeValue()
-                                    android.widget.Toast.makeText(context, "🗑️ Team deleted!", android.widget.Toast.LENGTH_SHORT).show()
-                                }.padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) { Text("🗑️ Delete", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                        context.startActivity(intent)
+                                    }
+                            }.padding(horizontal = 16.dp, vertical = 8.dp)) { Text("✏️ Edit Team", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFFF5F6D).copy(alpha = 0.7f)).clickable {
+                                val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
+                                com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                    .getReference("Users").child(userId).child(sportNode).removeValue()
+                                android.widget.Toast.makeText(context, "🗑️ Team deleted!", android.widget.Toast.LENGTH_SHORT).show()
+                            }.padding(horizontal = 16.dp, vertical = 8.dp)) { Text("🗑️ Delete", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
             }
         }
+
+        // Action Cards
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 BigActionCard("Create Team", "Build Your Squad", listOf(Color(0xFFFF5F6D), Color(0xFFFFC371)), Modifier.weight(1f)) {
@@ -249,33 +298,78 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
                 }
             }
         }
+
+        // Upcoming Matches — REAL, CLICKABLE
         item {
             Text(if (selectedSport == 0) "⚽ Upcoming Matches" else "🏏 Upcoming Matches", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Spacer(modifier = Modifier.height(10.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(if (selectedSport == 0) footballMatches else cricketMatches) { match ->
-                    MatchCard(league = match.first, teams = match.second, time = match.third)
+        }
+
+        item {
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CircularProgressIndicator(color = Color(0xFF8E2DE2), modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text("Loading matches...", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+                    }
+                }
+            } else if (currentMatches.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().height(80.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.07f)), contentAlignment = Alignment.Center) {
+                    Text("No matches available", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                }
+            } else {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(currentMatches) { match ->
+                        Card(
+                            modifier = Modifier.width(200.dp).height(120.dp).clickable {
+                                // Tap opens CreateTeamActivity for this specific match
+                                context.startActivity(Intent(context, CreateTeamActivity::class.java).apply {
+                                    putExtra("sport", match.sport)
+                                    putExtra("homeTeamId", match.homeTeamId)
+                                    putExtra("awayTeamId", match.awayTeamId)
+                                    putExtra("homeTeamName", match.homeTeam)
+                                    putExtra("awayTeamName", match.awayTeam)
+                                })
+                            },
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize()
+                                    .background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.13f))))
+                                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(match.competition, color = Color(0xFF8E2DE2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        Text(match.date, color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                                        Text(match.homeTeam.take(6), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                                        Text("VS", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp))
+                                        Text(match.awayTeam.take(6), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                                    }
+                                    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))).padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                                        Text("Tap to Pick Team →", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
 
-// ─── LEAGUES — real contests user joined ──────────────────────────────────────
+// ─── LEAGUES ──────────────────────────────────────────────────────────────────
 
 data class JoinedContest(
-    val contestId: String,
-    val name: String,
-    val sport: String,
-    val matchName: String,
-    val myScore: Int,
-    val opponentScore: Int,
-    val prizeCoins: Int,
-    val entryCoins: Int,
-    val isResolved: Boolean,
-    val iWon: Boolean,
-    val waitingForOpponent: Boolean
+    val contestId: String, val name: String, val sport: String, val matchName: String,
+    val myScore: Int, val opponentScore: Int, val prizeCoins: Int, val entryCoins: Int,
+    val isResolved: Boolean, val iWon: Boolean, val waitingForOpponent: Boolean
 )
 
 @Composable
@@ -286,10 +380,7 @@ fun LeaguesContent() {
     var selectedSport by remember { mutableStateOf(0) }
 
     DisposableEffect(Unit) {
-        val db = com.google.firebase.database.FirebaseDatabase
-            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-            .getReference("contests")
-
+        val db = com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com").getReference("contests")
         val listener = object : com.google.firebase.database.ValueEventListener {
             override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                 val list = mutableListOf<JoinedContest>()
@@ -301,21 +392,7 @@ fun LeaguesContent() {
                         val myScore = (child.child("result").child("scores").child(userId).value as? Long)?.toInt() ?: 0
                         val opponentId = joinedUsers.children.firstOrNull { it.key != userId }?.key ?: ""
                         val opponentScore = (child.child("result").child("scores").child(opponentId).value as? Long)?.toInt() ?: 0
-                        val waitingForOpponent = !isResolved && joinedUsers.childrenCount < 2
-
-                        list.add(JoinedContest(
-                            contestId = child.key ?: "",
-                            name = child.child("name").value?.toString() ?: "",
-                            sport = child.child("sport").value?.toString() ?: "",
-                            matchName = child.child("matchName").value?.toString() ?: "",
-                            myScore = myScore,
-                            opponentScore = opponentScore,
-                            prizeCoins = (child.child("prizeCoins").value as? Long)?.toInt() ?: 0,
-                            entryCoins = (child.child("entryCoins").value as? Long)?.toInt() ?: 0,
-                            isResolved = isResolved,
-                            iWon = isResolved && winnerId == userId,
-                            waitingForOpponent = waitingForOpponent
-                        ))
+                        list.add(JoinedContest(child.key ?: "", child.child("name").value?.toString() ?: "", child.child("sport").value?.toString() ?: "", child.child("matchName").value?.toString() ?: "", myScore, opponentScore, (child.child("prizeCoins").value as? Long)?.toInt() ?: 0, (child.child("entryCoins").value as? Long)?.toInt() ?: 0, isResolved, isResolved && winnerId == userId, !isResolved && joinedUsers.childrenCount < 2))
                     }
                 }
                 joinedContests = list.sortedByDescending { it.isResolved }
@@ -327,58 +404,40 @@ fun LeaguesContent() {
         onDispose { db.removeEventListener(listener) }
     }
 
-    val filtered = joinedContests.filter {
-        if (selectedSport == 0) it.sport == "Football" else it.sport == "Cricket"
-    }
+    val filtered = joinedContests.filter { if (selectedSport == 0) it.sport == "Football" else it.sport == "Cricket" }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 20.dp)) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("🏆 My Contests", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                if (!isLoading) {
-                    Text("${joinedContests.size} total", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
-                }
+                if (!isLoading) Text("${joinedContests.size} total", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
             }
         }
         item {
             Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50.dp)).background(Color.White.copy(alpha = 0.1f)).padding(4.dp)) {
                 listOf("⚽  Football", "🏏  Cricket").forEachIndexed { index, label ->
-                    Box(
-                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(50.dp))
-                            .background(if (selectedSport == index) Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))) else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)))
-                            .clickable { selectedSport = index }.padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                    Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(50.dp)).background(if (selectedSport == index) Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))) else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))).clickable { selectedSport = index }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
                 }
             }
         }
-
         if (isLoading) {
-            item {
-                Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF8E2DE2))
-                }
-            }
+            item { Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color(0xFF8E2DE2)) } }
         } else if (filtered.isEmpty()) {
             item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("🎯", fontSize = 48.sp)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("No contests joined yet!", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
                         Text("Go to Home and join a contest!", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
                     }
                 }
             }
         } else {
-            items(filtered) { contest ->
-                JoinedContestCard(contest = contest)
-            }
+            items(filtered) { contest -> JoinedContestCard(contest = contest) }
         }
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
@@ -386,72 +445,25 @@ fun LeaguesContent() {
 
 @Composable
 fun JoinedContestCard(contest: JoinedContest) {
-    val statusColor = when {
-        contest.waitingForOpponent -> Color(0xFFFFE082)
-        contest.iWon -> Color(0xFF38ef7d)
-        contest.isResolved -> Color(0xFFFF5F6D)
-        else -> Color(0xFFFFE082)
-    }
-    val statusText = when {
-        contest.waitingForOpponent -> "⏳ Waiting for opponent"
-        contest.iWon -> "🏆 You Won!"
-        contest.isResolved -> "😔 You Lost"
-        else -> "🎮 In Progress"
-    }
+    val statusColor = when { contest.waitingForOpponent -> Color(0xFFFFE082); contest.iWon -> Color(0xFF38ef7d); contest.isResolved -> Color(0xFFFF5F6D); else -> Color(0xFFFFE082) }
+    val statusText = when { contest.waitingForOpponent -> "⏳ Waiting for opponent"; contest.iWon -> "🏆 You Won!"; contest.isResolved -> "😔 You Lost"; else -> "🎮 In Progress" }
 
-    Box(
-        modifier = Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.12f))))
-            .border(1.dp,
-                if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.4f)
-                else if (contest.isResolved && !contest.iWon) Color(0xFFFF5F6D).copy(alpha = 0.4f)
-                else Color.White.copy(alpha = 0.15f),
-                RoundedCornerShape(16.dp))
-            .padding(16.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.12f)))).border(1.dp, if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.4f) else if (contest.isResolved && !contest.iWon) Color(0xFFFF5F6D).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp)).padding(16.dp)) {
         Column {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text(contest.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text(contest.matchName, color = Color(0xFF8E2DE2), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-                Box(
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(statusColor.copy(alpha = 0.15f))
-                        .border(1.dp, statusColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                ) {
-                    Text(statusText, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+                Column { Text(contest.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp); Text(contest.matchName, color = Color(0xFF8E2DE2), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(statusColor.copy(alpha = 0.15f)).border(1.dp, statusColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) { Text(statusText, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
-
             if (contest.isResolved) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Your Score", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
-                        Text("${contest.myScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("VS", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Opponent", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
-                        Text("${contest.opponentScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Your Score", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp); Text("${contest.myScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("VS", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp) }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Opponent", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp); Text("${contest.opponentScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                Box(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                        .background(if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.15f) else Color(0xFFFF5F6D).copy(alpha = 0.15f))
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        if (contest.iWon) "🎉 Won +${contest.prizeCoins} coins!" else "Entry: ${contest.entryCoins} coins",
-                        color = if (contest.iWon) Color(0xFF38ef7d) else Color(0xFFFF5F6D),
-                        fontWeight = FontWeight.Bold, fontSize = 13.sp
-                    )
+                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.15f) else Color(0xFFFF5F6D).copy(alpha = 0.15f)).padding(8.dp), contentAlignment = Alignment.Center) {
+                    Text(if (contest.iWon) "🎉 Won +${contest.prizeCoins} coins!" else "Entry: ${contest.entryCoins} coins", color = if (contest.iWon) Color(0xFF38ef7d) else Color(0xFFFF5F6D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             } else if (contest.waitingForOpponent) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -461,13 +473,12 @@ fun JoinedContestCard(contest: JoinedContest) {
     }
 }
 
-// ─── PROFILE — real stats from Firebase ──────────────────────────────────────
+// ─── PROFILE ──────────────────────────────────────────────────────────────────
 
 @Composable
 fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoins: Int = 1250) {
     val context = LocalContext.current
     val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
-
     var contestsPlayed by remember { mutableStateOf(0) }
     var contestsWon by remember { mutableStateOf(0) }
     var bestScore by remember { mutableStateOf(0) }
@@ -475,117 +486,66 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
     var cricketContestsPlayed by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(true) }
 
-    // Load real stats from Firebase contests
     LaunchedEffect(Unit) {
-        val db = com.google.firebase.database.FirebaseDatabase
-            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-            .getReference("contests")
-
+        val db = com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com").getReference("contests")
         db.get().addOnSuccessListener { snapshot ->
-            var played = 0
-            var won = 0
-            var best = 0
-            var footballPlayed = 0
-            var cricketPlayed = 0
-
+            var played = 0; var won = 0; var best = 0; var footballPlayed = 0; var cricketPlayed = 0
             snapshot.children.forEach { child ->
                 val joinedUsers = child.child("joinedUsers")
                 if (joinedUsers.child(userId).exists()) {
                     played++
                     val sport = child.child("sport").value?.toString() ?: ""
                     if (sport == "Football") footballPlayed++ else cricketPlayed++
-
                     val isResolved = child.child("result").child("resolved").value as? Boolean ?: false
                     val winnerId = child.child("result").child("winnerId").value?.toString() ?: ""
                     if (isResolved && winnerId == userId) won++
-
                     val myScore = (child.child("result").child("scores").child(userId).value as? Long)?.toInt() ?: 0
                     if (myScore > best) best = myScore
                 }
             }
-            contestsPlayed = played
-            contestsWon = won
-            bestScore = best
-            footballContestsPlayed = footballPlayed
-            cricketContestsPlayed = cricketPlayed
+            contestsPlayed = played; contestsWon = won; bestScore = best
+            footballContestsPlayed = footballPlayed; cricketContestsPlayed = cricketPlayed
             isLoading = false
         }
     }
 
     val winRate = if (contestsPlayed > 0) (contestsWon * 100 / contestsPlayed) else 0
-    val rank = when {
-        winRate >= 70 -> "Elite"
-        winRate >= 50 -> "Pro"
-        contestsPlayed > 0 -> "Rookie"
-        else -> "New Player"
-    }
+    val rank = when { winRate >= 70 -> "Elite"; winRate >= 50 -> "Pro"; contestsPlayed > 0 -> "Rookie"; else -> "New Player" }
     val rankEmoji = when (rank) { "Elite" -> "👑"; "Pro" -> "⭐"; "Rookie" -> "🎮"; else -> "🆕" }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
-
-        // Avatar + name
         item {
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = Modifier.size(90.dp).clip(CircleShape)
-                        .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        userName.take(1).uppercase(),
-                        fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.ExtraBold
-                    )
+                Box(modifier = Modifier.size(90.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))), contentAlignment = Alignment.Center) {
+                    Text(userName.take(1).uppercase(), fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(userName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                 Text(userEmail, color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(6.dp))
                 Surface(color = Color(0xFF8E2DE2).copy(alpha = 0.3f), shape = RoundedCornerShape(20.dp)) {
-                    Text("$rankEmoji $rank", modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("$rankEmoji $rank", modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
-
-        // Main stats row — REAL data
         item {
             if (isLoading) {
-                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(24.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF8E2DE2), modifier = Modifier.size(24.dp))
-                }
+                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color(0xFF8E2DE2), modifier = Modifier.size(24.dp)) }
             } else {
                 Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    StatItem("🔑 $userCoins", "Coins")
-                    VerticalDivider()
-                    StatItem("$contestsPlayed", "Played")
-                    VerticalDivider()
-                    StatItem("$contestsWon", "Won")
+                    StatItem("🔑 $userCoins", "Coins"); VerticalDivider(); StatItem("$contestsPlayed", "Played"); VerticalDivider(); StatItem("$contestsWon", "Won")
                 }
             }
         }
-
-        // Win rate card
         item {
-            Box(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                    .background(Brush.horizontalGradient(
-                        if (winRate >= 50) listOf(Color(0xFF11998e), Color(0xFF38ef7d))
-                        else listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
-                    )).padding(16.dp)
-            ) {
+            Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(if (winRate >= 50) listOf(Color(0xFF11998e), Color(0xFF38ef7d)) else listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))).padding(16.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text("Win Rate", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
-                        Text("$winRate%", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
-                        Text("$contestsWon wins from $contestsPlayed contests", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
-                    }
+                    Column { Text("Win Rate", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp); Text("$winRate%", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp); Text("$contestsWon wins from $contestsPlayed contests", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp) }
                     Text(if (winRate >= 50) "🔥" else "💪", fontSize = 40.sp)
                 }
             }
         }
-
-        // Football + Cricket stats
         item { Text("⚽ Football Stats", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -600,24 +560,16 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 MiniStatCard("$cricketContestsPlayed", "Contests", Color(0xFFf7971e), Color(0xFFffd200), Modifier.weight(1f))
             }
         }
-
-        // Settings
         item { Text("Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf("🔔  Notifications", "🔒  Privacy", "🎨  Appearance", "❓  Help & Support", "🚪  Logout").forEach { option ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.07f))
-                            .clickable {
-                                if (option == "🚪  Logout") {
-                                    com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
-                                    val intent = Intent(context, LoginAct::class.java)
-                                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                    context.startActivity(intent)
-                                }
-                            }.padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.07f)).clickable {
+                        if (option == "🚪  Logout") {
+                            com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                            context.startActivity(Intent(context, LoginAct::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK })
+                        }
+                    }.padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(option, color = Color.White, fontSize = 14.sp)
                         Text("›", color = Color.White.copy(alpha = 0.4f), fontSize = 20.sp)
                     }
