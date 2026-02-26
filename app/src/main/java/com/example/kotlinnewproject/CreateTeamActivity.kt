@@ -1,7 +1,5 @@
 package com.example.kotlinnewproject
 
-
-
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -29,6 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class Player(
     val name: String,
@@ -42,56 +42,216 @@ class CreateTeamActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val sport = intent.getStringExtra("sport") ?: "football"
+        val homeTeamId = intent.getIntExtra("homeTeamId", 0)
+        val awayTeamId = intent.getIntExtra("awayTeamId", 0)
+        val homeTeamName = intent.getStringExtra("homeTeamName") ?: ""
+        val awayTeamName = intent.getStringExtra("awayTeamName") ?: ""
         setContent {
-            CreateTeamScreen()
+            CreateTeamScreen(
+                initialSport = if (sport == "cricket") 1 else 0,
+                homeTeamId = homeTeamId,
+                awayTeamId = awayTeamId,
+                homeTeamName = homeTeamName,
+                awayTeamName = awayTeamName
+            )
         }
     }
 }
 
 @Composable
-fun CreateTeamScreen() {
+fun CreateTeamScreen(
+    initialSport: Int = 0,
+    homeTeamId: Int = 0,
+    awayTeamId: Int = 0,
+    homeTeamName: String = "",
+    awayTeamName: String = ""
+) {
     val context = LocalContext.current
-    var selectedSport by remember { mutableStateOf(0) } // 0 = Football, 1 = Cricket
+    val selectedSport = initialSport  // locked to what was passed from match selection
     var selectedPlayers by remember { mutableStateOf(setOf<String>()) }
     var selectedPosition by remember { mutableStateOf("ALL") }
 
-    val footballPlayers = listOf(
-        Player("De Gea", "Man Utd", "GK", 9.0, 120),
-        Player("Alisson", "Liverpool", "GK", 10.0, 145),
-        Player("Ederson", "Man City", "GK", 9.5, 132),
-        Player("Alexander-Arnold", "Liverpool", "DEF", 9.0, 155),
-        Player("Trent", "Liverpool", "DEF", 8.5, 140),
-        Player("Cancelo", "Man City", "DEF", 8.0, 130),
-        Player("Salah", "Liverpool", "MID", 13.0, 210),
-        Player("De Bruyne", "Man City", "MID", 12.5, 198),
-        Player("Rashford", "Man Utd", "MID", 10.0, 165),
-        Player("Haaland", "Man City", "FWD", 14.0, 230),
-        Player("Kane", "Bayern", "FWD", 12.0, 195),
-        Player("Firmino", "Liverpool", "FWD", 9.0, 150)
-    )
+    // Football API state
+    var apiPlayers by remember { mutableStateOf<List<Player>>(emptyList()) }
+    var isLoadingFootball by remember { mutableStateOf(false) }
+    var footballError by remember { mutableStateOf("") }
 
-    val cricketPlayers = listOf(
-        Player("Dhoni", "CSK", "WK", 10.0, 180),
-        Player("Buttler", "RR", "WK", 9.5, 165),
-        Player("Kohli", "RCB", "BAT", 13.0, 220),
-        Player("Rohit", "MI", "BAT", 12.5, 210),
-        Player("Warner", "DC", "BAT", 11.0, 190),
-        Player("Stokes", "CSK", "AR", 11.5, 195),
-        Player("Jadeja", "CSK", "AR", 10.5, 185),
-        Player("Hardik", "MI", "AR", 11.0, 188),
-        Player("Bumrah", "MI", "BOWL", 10.0, 175),
-        Player("Rashid", "GT", "BOWL", 9.5, 168),
-        Player("Chahal", "RR", "BOWL", 9.0, 155),
-        Player("Shami", "GT", "BOWL", 9.5, 162)
-    )
+    // Cricket Firebase state
+    var cricketPlayers by remember { mutableStateOf<List<Player>>(emptyList()) }
+    var isLoadingCricket by remember { mutableStateOf(false) }
+    var cricketError by remember { mutableStateOf("") }
+
+    val apiKey = "ab525c6736ef4253a78343b517589979"
+
+    // Fetch football players
+    LaunchedEffect(homeTeamId, awayTeamId) {
+        if (selectedSport == 0 && (homeTeamId != 0 || awayTeamId != 0)) {
+            isLoadingFootball = true
+            footballError = ""
+            try {
+                val allPlayers = mutableListOf<Player>()
+                listOf(homeTeamId, awayTeamId).forEach { teamId ->
+                    if (teamId != 0) {
+                        try {
+                            val squad = withContext(Dispatchers.IO) {
+                                FootballApi.service.getTeamSquad(apiKey, teamId)
+                            }
+                            val teamName = if (teamId == homeTeamId) homeTeamName else awayTeamName
+                            squad.squad.forEach { p ->
+                                val position = when (p.position) {
+                                    "Goalkeeper" -> "GK"
+                                    "Defence" -> "DEF"
+                                    "Midfield" -> "MID"
+                                    "Offence" -> "FWD"
+                                    else -> "MID"
+                                }
+                                allPlayers.add(
+                                    Player(
+                                        name = p.name,
+                                        club = teamName,
+                                        position = position,
+                                        credits = when (position) {
+                                            "GK" -> 8.0
+                                            "DEF" -> 8.5
+                                            "MID" -> 10.0
+                                            "FWD" -> 11.0
+                                            else -> 9.0
+                                        },
+                                        points = (100..220).random()
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) { }
+                    }
+                }
+                apiPlayers = allPlayers
+            } catch (e: Exception) {
+                footballError = "Failed to load players: ${e.message}"
+            }
+            isLoadingFootball = false
+        } else if (selectedSport == 0) {
+            // Fallback: load from all PL teams
+            isLoadingFootball = true
+            footballError = ""
+            try {
+                val teams = withContext(Dispatchers.IO) {
+                    FootballApi.service.getPLTeams(apiKey)
+                }
+                val allPlayers = mutableListOf<Player>()
+                teams.teams.take(5).forEach { team ->
+                    try {
+                        val squad = withContext(Dispatchers.IO) {
+                            FootballApi.service.getTeamSquad(apiKey, team.id)
+                        }
+                        squad.squad.forEach { p ->
+                            val position = when (p.position) {
+                                "Goalkeeper" -> "GK"
+                                "Defence" -> "DEF"
+                                "Midfield" -> "MID"
+                                "Offence" -> "FWD"
+                                else -> "MID"
+                            }
+                            allPlayers.add(
+                                Player(
+                                    name = p.name,
+                                    club = team.shortName,
+                                    position = position,
+                                    credits = when (position) {
+                                        "GK" -> 8.0
+                                        "DEF" -> 8.5
+                                        "MID" -> 10.0
+                                        "FWD" -> 11.0
+                                        else -> 9.0
+                                    },
+                                    points = (100..220).random()
+                                )
+                            )
+                        }
+                    } catch (e: Exception) { }
+                }
+                apiPlayers = allPlayers
+            } catch (e: Exception) {
+                footballError = "Failed to load players: ${e.message}"
+            }
+            isLoadingFootball = false
+        }
+    }
+
+    // Fetch cricket players from Firebase for both teams
+    LaunchedEffect(homeTeamName, awayTeamName) {
+        if (selectedSport == 1 && homeTeamName.isNotEmpty() && awayTeamName.isNotEmpty()) {
+            isLoadingCricket = true
+            cricketError = ""
+            try {
+                val db = com.google.firebase.database.FirebaseDatabase
+                    .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                    .getReference("cricket").child("squads")
+
+                val players = mutableListOf<Player>()
+
+                // Fetch home team
+                db.child(homeTeamName).get().addOnSuccessListener { snapshot ->
+                    snapshot.children.forEach { child ->
+                        val raw = child.value?.toString() ?: return@forEach
+                        val parts = raw.split("|")
+                        if (parts.size >= 4) {
+                            players.add(
+                                Player(
+                                    name = parts[0],
+                                    club = homeTeamName,
+                                    position = parts[1],
+                                    credits = parts[2].toDoubleOrNull() ?: 9.0,
+                                    points = parts[3].toIntOrNull() ?: 150
+                                )
+                            )
+                        }
+                    }
+
+                    // Fetch away team
+                    db.child(awayTeamName).get().addOnSuccessListener { snapshot2 ->
+                        snapshot2.children.forEach { child ->
+                            val raw = child.value?.toString() ?: return@forEach
+                            val parts = raw.split("|")
+                            if (parts.size >= 4) {
+                                players.add(
+                                    Player(
+                                        name = parts[0],
+                                        club = awayTeamName,
+                                        position = parts[1],
+                                        credits = parts[2].toDoubleOrNull() ?: 9.0,
+                                        points = parts[3].toIntOrNull() ?: 150
+                                    )
+                                )
+                            }
+                        }
+                        cricketPlayers = players
+                        isLoadingCricket = false
+                    }.addOnFailureListener {
+                        cricketError = "Failed to load ${awayTeamName} squad"
+                        isLoadingCricket = false
+                    }
+                }.addOnFailureListener {
+                    cricketError = "Failed to load ${homeTeamName} squad"
+                    isLoadingCricket = false
+                }
+            } catch (e: Exception) {
+                cricketError = "Failed to load cricket players"
+                isLoadingCricket = false
+            }
+        }
+    }
 
     val footballPositions = listOf("ALL", "GK", "DEF", "MID", "FWD")
     val cricketPositions = listOf("ALL", "WK", "BAT", "AR", "BOWL")
 
-    val currentPlayers = if (selectedSport == 0) footballPlayers else cricketPlayers
+    val currentPlayers = if (selectedSport == 0) apiPlayers else cricketPlayers
     val currentPositions = if (selectedSport == 0) footballPositions else cricketPositions
+    val isLoading = if (selectedSport == 0) isLoadingFootball else isLoadingCricket
+    val errorMessage = if (selectedSport == 0) footballError else cricketError
+
     val maxPlayers = 11
-    val totalBudget = 170
+    val totalBudget = 170.0
 
     val selectedPlayerObjects = currentPlayers.filter { it.name in selectedPlayers }
     val usedBudget = selectedPlayerObjects.sumOf { it.credits }
@@ -104,7 +264,6 @@ fun CreateTeamScreen() {
             painter = painterResource(R.drawable.iphone),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-
             contentScale = ContentScale.Crop,
             colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
                 Color.Black.copy(alpha = 0.55f),
@@ -112,12 +271,11 @@ fun CreateTeamScreen() {
             )
         )
 
-        Column(modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-//            .navigationBarsPadding()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
         ) {
-
             // TOP BAR
             Row(
                 modifier = Modifier
@@ -136,46 +294,38 @@ fun CreateTeamScreen() {
                 ) {
                     Text("←", color = Color.White, fontSize = 18.sp)
                 }
-                Text(
-                    "Create Team",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Create Team",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                    if (homeTeamName.isNotEmpty() && awayTeamName.isNotEmpty()) {
+                        Text(
+                            "$homeTeamName vs $awayTeamName",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
                 Box(modifier = Modifier.size(36.dp))
             }
 
-            // SPORT TOGGLE
-            Row(
+            // SPORT BADGE (read-only, not a toggle)
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .clip(RoundedCornerShape(50.dp))
-                    .background(Color.White.copy(alpha = 0.1f))
-                    .padding(4.dp)
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
             ) {
-                listOf("⚽  Football", "🏏  Cricket").forEachIndexed { index, label ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(50.dp))
-                            .background(
-                                if (selectedSport == index)
-                                    Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
-                                else
-                                    Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                            )
-                            .clickable {
-                                selectedSport = index
-                                selectedPlayers = setOf()
-                                selectedPosition = "ALL"
-                            }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                }
+                Text(
+                    if (selectedSport == 0) "⚽  Football" else "🏏  Cricket",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -251,115 +401,126 @@ fun CreateTeamScreen() {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // PLAYER LIST
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 80.dp)
-            ) {
-                items(filteredPlayers) { player ->
-                    val isSelected = player.name in selectedPlayers
-                    val canAdd = !isSelected &&
-                            selectedPlayers.size < maxPlayers &&
-                            remainingBudget >= player.credits
+            // PLAYER LIST or LOADING
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Color(0xFF8E2DE2))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Loading players...", color = Color.White, fontSize = 14.sp)
+                    }
+                }
+            } else if (errorMessage.isNotEmpty()) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(errorMessage, color = Color(0xFFFF5F6D), fontSize = 13.sp, textAlign = TextAlign.Center)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    items(filteredPlayers) { player ->
+                        val isSelected = player.name in selectedPlayers
+                        val canAdd = !isSelected &&
+                                selectedPlayers.size < maxPlayers &&
+                                remainingBudget >= player.credits
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (isSelected)
-                                    Brush.horizontalGradient(listOf(Color(0xFF8E2DE2).copy(alpha = 0.4f), Color(0xFF4A00E0).copy(alpha = 0.4f)))
-                                else
-                                    Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.07f), Color.White.copy(alpha = 0.07f)))
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) Color(0xFF8E2DE2) else Color.White.copy(alpha = 0.1f),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable {
-                                if (isSelected) {
-                                    selectedPlayers = selectedPlayers - player.name
-                                } else if (canAdd) {
-                                    selectedPlayers = selectedPlayers + player.name
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected)
+                                        Brush.horizontalGradient(listOf(Color(0xFF8E2DE2).copy(alpha = 0.4f), Color(0xFF4A00E0).copy(alpha = 0.4f)))
+                                    else
+                                        Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.07f), Color.White.copy(alpha = 0.07f)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Color(0xFF8E2DE2) else Color.White.copy(alpha = 0.1f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    if (isSelected) {
+                                        selectedPlayers = selectedPlayers - player.name
+                                    } else if (canAdd) {
+                                        selectedPlayers = selectedPlayers + player.name
+                                    }
+                                }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(positionColor(player.position))
+                                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(player.position, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(player.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text(player.club, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
                                 }
                             }
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Position badge
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(positionColor(player.position))
-                                    .padding(horizontal = 6.dp, vertical = 3.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(player.position, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(player.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text(player.club, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("${player.credits} cr", color = Color(0xFFFFE082), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("${player.points} pts", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected) Color(0xFF38ef7d)
-                                        else if (canAdd) Color(0xFF8E2DE2)
-                                        else Color.Gray.copy(alpha = 0.4f)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    if (isSelected) "✓" else "+",
-                                    color = Color.White,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("${player.credits} cr", color = Color(0xFFFFE082), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("${player.points} pts", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) Color(0xFF38ef7d)
+                                            else if (canAdd) Color(0xFF8E2DE2)
+                                            else Color.Gray.copy(alpha = 0.4f)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        if (isSelected) "✓" else "+",
+                                        color = Color.White,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
-
-            // SAVE TEAM BUTTON
-
         }
-        // SAVE TEAM BUTTON (CORRECT PLACE)
+
+        // SAVE TEAM BUTTON
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter) // ✅ works here
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(16.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(
                     if (selectedPlayers.size == maxPlayers)
-                        Brush.horizontalGradient(
-                            listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
-                        )
+                        Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
                     else
-                        Brush.horizontalGradient(
-                            listOf(
-                                Color.Gray.copy(alpha = 0.4f),
-                                Color.Gray.copy(alpha = 0.4f)
-                            )
-                        )
+                        Brush.horizontalGradient(listOf(Color.Gray.copy(alpha = 0.4f), Color.Gray.copy(alpha = 0.4f)))
                 )
                 .clickable(enabled = selectedPlayers.size == maxPlayers) {
                     val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -387,10 +548,8 @@ fun CreateTeamScreen() {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                if (selectedPlayers.size == maxPlayers)
-                    "✅ Save Team"
-                else
-                    "Select ${maxPlayers - selectedPlayers.size} more players",
+                if (selectedPlayers.size == maxPlayers) "✅ Save Team"
+                else "Select ${maxPlayers - selectedPlayers.size} more players",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
@@ -50,6 +51,24 @@ class DashboardActivity : ComponentActivity() {
 fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
     val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(0) }
+    var savedTeamPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
+    var savedTeamSport by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        val db = com.google.firebase.database.FirebaseDatabase
+            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+            .getReference("Users").child(userId).child("team")
+
+        db.get().addOnSuccessListener { snapshot ->
+            savedTeamSport = snapshot.child("sport").value?.toString() ?: ""
+            val players = mutableListOf<String>()
+            snapshot.child("players").children.forEach {
+                players.add(it.value?.toString() ?: "")
+            }
+            savedTeamPlayers = players
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -108,7 +127,7 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
                     .padding(paddingValues)
             ) {
                 when (selectedTab) {
-                    0 -> HomeContent()
+                    0 -> HomeContent(savedTeamPlayers = savedTeamPlayers, savedTeamSport = savedTeamSport)
                     1 -> LeaguesContent()
                     2 -> AlertsContent()
                     3 -> ProfileContent(userName = userName, userEmail = userEmail)
@@ -119,7 +138,7 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
 }
 
 @Composable
-fun HomeContent() {
+fun HomeContent(savedTeamPlayers: List<String>, savedTeamSport: String) {
     val context = LocalContext.current
     // 0 = Football, 1 = Cricket
     var selectedSport by remember { mutableStateOf(0) }
@@ -240,6 +259,7 @@ fun HomeContent() {
         }
 
         // MY TEAM POINTS CARD
+        // MY TEAM POINTS CARD
         item {
             Box(
                 modifier = Modifier
@@ -254,39 +274,38 @@ fun HomeContent() {
             ) {
                 Column {
                     Text(
-                        "My Team This Week",
+                        "My Team",
                         color = Color.White.copy(alpha = 0.8f),
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    if (savedTeamPlayers.isEmpty()) {
                         Text(
-                            "342 pts",
+                            "No team saved yet!",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Tap Create Team to get started",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 12.sp
+                        )
+                    } else {
+                        Text(
+                            "$savedTeamSport • ${savedTeamPlayers.size} Players",
                             color = Color.White,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 32.sp
+                            fontSize = 20.sp
                         )
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Rank", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
-                            Text(
-                                "#4 / 128",
-                                color = Color(0xFFFFE082),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            savedTeamPlayers.joinToString(", "),
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 11.sp
+                        )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        if (selectedSport == 0) "⚽ Football League • Gameweek 28"
-                        else "🏏 Cricket League • Match 14",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 11.sp
-                    )
                 }
             }
         }
@@ -303,7 +322,7 @@ fun HomeContent() {
                     gradient = listOf(Color(0xFFFF5F6D), Color(0xFFFFC371)),
                     modifier = Modifier.weight(1f),
                     onClick = {
-                        context.startActivity(Intent(context, CreateTeamActivity::class.java))
+                        context.startActivity(Intent(context, MatchSelectionActivity::class.java))
                     }
                 )
                 BigActionCard(
