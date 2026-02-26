@@ -55,6 +55,9 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
     var footballTeamPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
     var cricketTeamPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
 
+    // Real coins from Firebase
+    var userCoins by remember { mutableStateOf(1250) }
+
     // Real-time listeners — updates instantly when team is saved
     DisposableEffect(Unit) {
         val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -84,12 +87,29 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
             override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
         }
 
+        // Real-time coins listener
+        val coinsListener = object : com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                userCoins = (snapshot.value as? Long)?.toInt() ?: 1250
+            }
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+        }
+
         userRef.child("footballTeam").addValueEventListener(footballListener)
         userRef.child("cricketTeam").addValueEventListener(cricketListener)
+        userRef.child("coins").addValueEventListener(coinsListener)
+
+        // Initialize coins in Firebase if not set
+        userRef.child("coins").get().addOnSuccessListener { snap ->
+            if (!snap.exists()) {
+                userRef.child("coins").setValue(1250)
+            }
+        }
 
         onDispose {
             userRef.child("footballTeam").removeEventListener(footballListener)
             userRef.child("cricketTeam").removeEventListener(cricketListener)
+            userRef.child("coins").removeEventListener(coinsListener)
         }
     }
 
@@ -151,7 +171,8 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
                 when (selectedTab) {
                     0 -> HomeContent(
                         footballTeamPlayers = footballTeamPlayers,
-                        cricketTeamPlayers = cricketTeamPlayers
+                        cricketTeamPlayers = cricketTeamPlayers,
+                        userCoins = userCoins
                     )
                     1 -> LeaguesContent()
                     2 -> AlertsContent()
@@ -165,7 +186,8 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
 @Composable
 fun HomeContent(
     footballTeamPlayers: List<String>,
-    cricketTeamPlayers: List<String>
+    cricketTeamPlayers: List<String>,
+    userCoins: Int = 1250
 ) {
     val context = LocalContext.current
     var selectedSport by remember { mutableStateOf(0) } // 0 = Football, 1 = Cricket
@@ -232,8 +254,9 @@ fun HomeContent(
                                 tint = Color(0xFFFFD700),
                                 modifier = Modifier.size(16.dp)
                             )
+                            // REAL COINS from Firebase
                             Text(
-                                " 1,250",
+                                " $userCoins",
                                 color = Color.White,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
@@ -398,11 +421,18 @@ fun HomeContent(
                         context.startActivity(Intent(context, MatchSelectionActivity::class.java))
                     }
                 )
+                // JOIN CONTEST — now opens ContestActivity with current sport
                 BigActionCard(
                     title = "Join Contest",
                     sub = "Enter & Compete",
                     gradient = listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        val intent = Intent(context, ContestActivity::class.java).apply {
+                            putExtra("sport", currentSportLabel)
+                        }
+                        context.startActivity(intent)
+                    }
                 )
             }
         }
