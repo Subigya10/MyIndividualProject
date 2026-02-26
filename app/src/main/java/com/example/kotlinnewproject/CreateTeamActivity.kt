@@ -524,9 +524,10 @@ fun CreateTeamScreen(
                 )
                 .clickable(enabled = selectedPlayers.size == maxPlayers) {
                     val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                    val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
                     val db = com.google.firebase.database.FirebaseDatabase
                         .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-                        .getReference("Users").child(userId).child("team")
+                        .getReference("Users").child(userId).child(sportNode)
 
                     val teamData = mapOf(
                         "sport" to if (selectedSport == 0) "Football" else "Cricket",
