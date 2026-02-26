@@ -324,6 +324,60 @@ fun HomeContent(
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 11.sp
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        // EDIT & DELETE BUTTONS
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // EDIT button — opens CreateTeam with same match + players pre-selected
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                                    .clickable {
+                                        val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                        val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
+                                        com.google.firebase.database.FirebaseDatabase
+                                            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                            .getReference("Users").child(userId).child(sportNode)
+                                            .get().addOnSuccessListener { snapshot ->
+                                                val homeTeamName = snapshot.child("homeTeamName").value?.toString() ?: ""
+                                                val awayTeamName = snapshot.child("awayTeamName").value?.toString() ?: ""
+                                                val homeTeamId = (snapshot.child("homeTeamId").value as? Long)?.toInt() ?: 0
+                                                val awayTeamId = (snapshot.child("awayTeamId").value as? Long)?.toInt() ?: 0
+                                                val intent = Intent(context, CreateTeamActivity::class.java).apply {
+                                                    putExtra("sport", if (selectedSport == 0) "football" else "cricket")
+                                                    putExtra("homeTeamName", homeTeamName)
+                                                    putExtra("awayTeamName", awayTeamName)
+                                                    putExtra("homeTeamId", homeTeamId)
+                                                    putExtra("awayTeamId", awayTeamId)
+                                                    putExtra("editMode", true)
+                                                    putExtra("editSport", currentSportLabel)
+                                                }
+                                                context.startActivity(intent)
+                                            }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text("✏️ Edit Team", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            // DELETE button — removes team from Firebase
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFFF5F6D).copy(alpha = 0.7f))
+                                    .clickable {
+                                        val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                        val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
+                                        com.google.firebase.database.FirebaseDatabase
+                                            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                            .getReference("Users").child(userId).child(sportNode)
+                                            .removeValue()
+                                        android.widget.Toast.makeText(context, "🗑️ Team deleted!", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text("🗑️ Delete", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }

@@ -47,13 +47,22 @@ class CreateTeamActivity : ComponentActivity() {
         val awayTeamId = intent.getIntExtra("awayTeamId", 0)
         val homeTeamName = intent.getStringExtra("homeTeamName") ?: ""
         val awayTeamName = intent.getStringExtra("awayTeamName") ?: ""
+        val editMode = intent.getBooleanExtra("editMode", false)
+        val editSport = intent.getStringExtra("editSport") ?: ""
         setContent {
             CreateTeamScreen(
-                initialSport = if (sport == "cricket") 1 else 0,
+                initialSport = when {
+                    editSport == "Cricket" -> 1
+                    editSport == "Football" -> 0
+                    sport == "cricket" -> 1
+                    else -> 0
+                },
                 homeTeamId = homeTeamId,
                 awayTeamId = awayTeamId,
                 homeTeamName = homeTeamName,
-                awayTeamName = awayTeamName
+                awayTeamName = awayTeamName,
+                editMode = editMode,
+                editSport = editSport
             )
         }
     }
@@ -65,12 +74,18 @@ fun CreateTeamScreen(
     homeTeamId: Int = 0,
     awayTeamId: Int = 0,
     homeTeamName: String = "",
-    awayTeamName: String = ""
+    awayTeamName: String = "",
+    editMode: Boolean = false,
+    editSport: String = ""
 ) {
     val context = LocalContext.current
-    val selectedSport = initialSport  // locked to what was passed from match selection
-    var selectedPlayers by remember { mutableStateOf(setOf<String>()) }
+    val selectedSport = initialSport
     var selectedPosition by remember { mutableStateOf("ALL") }
+
+    // Previously saved players — loaded from Firebase in edit mode
+    var preSelectedPlayers by remember { mutableStateOf(setOf<String>()) }
+    var selectedPlayers by remember { mutableStateOf(setOf<String>()) }
+    var preLoadDone by remember { mutableStateOf(!editMode) } // if not edit mode, skip waiting
 
     // Football API state
     var apiPlayers by remember { mutableStateOf<List<Player>>(emptyList()) }
@@ -84,8 +99,29 @@ fun CreateTeamScreen(
 
     val apiKey = "ab525c6736ef4253a78343b517589979"
 
-    // Fetch football players
-    LaunchedEffect(homeTeamId, awayTeamId) {
+    // Step 1: Load previously saved players FIRST (edit mode only)
+    LaunchedEffect(editMode) {
+        if (editMode && editSport.isNotEmpty()) {
+            val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+            val sportNode = if (editSport == "Cricket") "cricketTeam" else "footballTeam"
+            com.google.firebase.database.FirebaseDatabase
+                .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                .getReference("Users").child(userId).child(sportNode)
+                .get().addOnSuccessListener { snapshot ->
+                    val existing = mutableSetOf<String>()
+                    snapshot.child("players").children.forEach {
+                        existing.add(it.value?.toString() ?: "")
+                    }
+                    preSelectedPlayers = existing
+                    selectedPlayers = existing // pre-tick them
+                    preLoadDone = true // now safe to load player list
+                }
+        }
+    }
+
+    // Step 2: Fetch football players AFTER pre-selected are loaded
+    LaunchedEffect(homeTeamId, awayTeamId, preLoadDone) {
+        if (!preLoadDone) return@LaunchedEffect // wait for saved players first
         if (selectedSport == 0 && (homeTeamId != 0 || awayTeamId != 0)) {
             isLoadingFootball = true
             footballError = ""
@@ -131,7 +167,6 @@ fun CreateTeamScreen(
             }
             isLoadingFootball = false
         } else if (selectedSport == 0) {
-            // Fallback: load from all PL teams
             isLoadingFootball = true
             footballError = ""
             try {
@@ -178,8 +213,9 @@ fun CreateTeamScreen(
         }
     }
 
-    // Fetch cricket players from Firebase for both teams
-    LaunchedEffect(homeTeamName, awayTeamName) {
+    // Step 2 (cricket): Fetch cricket players AFTER pre-selected are loaded
+    LaunchedEffect(homeTeamName, awayTeamName, preLoadDone) {
+        if (!preLoadDone) return@LaunchedEffect // wait for saved players first
         if (selectedSport == 1 && homeTeamName.isNotEmpty() && awayTeamName.isNotEmpty()) {
             isLoadingCricket = true
             cricketError = ""
@@ -190,49 +226,40 @@ fun CreateTeamScreen(
 
                 val players = mutableListOf<Player>()
 
-                // Fetch home team
                 db.child(homeTeamName).get().addOnSuccessListener { snapshot ->
                     snapshot.children.forEach { child ->
                         val raw = child.value?.toString() ?: return@forEach
                         val parts = raw.split("|")
                         if (parts.size >= 4) {
-                            players.add(
-                                Player(
-                                    name = parts[0],
-                                    club = homeTeamName,
-                                    position = parts[1],
-                                    credits = parts[2].toDoubleOrNull() ?: 9.0,
-                                    points = parts[3].toIntOrNull() ?: 150
-                                )
-                            )
+                            players.add(Player(
+                                name = parts[0], club = homeTeamName,
+                                position = parts[1],
+                                credits = parts[2].toDoubleOrNull() ?: 9.0,
+                                points = parts[3].toIntOrNull() ?: 150
+                            ))
                         }
                     }
-
-                    // Fetch away team
                     db.child(awayTeamName).get().addOnSuccessListener { snapshot2 ->
                         snapshot2.children.forEach { child ->
                             val raw = child.value?.toString() ?: return@forEach
                             val parts = raw.split("|")
                             if (parts.size >= 4) {
-                                players.add(
-                                    Player(
-                                        name = parts[0],
-                                        club = awayTeamName,
-                                        position = parts[1],
-                                        credits = parts[2].toDoubleOrNull() ?: 9.0,
-                                        points = parts[3].toIntOrNull() ?: 150
-                                    )
-                                )
+                                players.add(Player(
+                                    name = parts[0], club = awayTeamName,
+                                    position = parts[1],
+                                    credits = parts[2].toDoubleOrNull() ?: 9.0,
+                                    points = parts[3].toIntOrNull() ?: 150
+                                ))
                             }
                         }
                         cricketPlayers = players
                         isLoadingCricket = false
                     }.addOnFailureListener {
-                        cricketError = "Failed to load ${awayTeamName} squad"
+                        cricketError = "Failed to load $awayTeamName squad"
                         isLoadingCricket = false
                     }
                 }.addOnFailureListener {
-                    cricketError = "Failed to load ${homeTeamName} squad"
+                    cricketError = "Failed to load $homeTeamName squad"
                     isLoadingCricket = false
                 }
             } catch (e: Exception) {
@@ -271,82 +298,53 @@ fun CreateTeamScreen(
             )
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             // TOP BAR
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
+                    modifier = Modifier.size(36.dp).clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .clickable { (context as? CreateTeamActivity)?.finish() },
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("←", color = Color.White, fontSize = 18.sp)
-                }
+                ) { Text("←", color = Color.White, fontSize = 18.sp) }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        "Create Team",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
+                        if (editMode) "Edit Team" else "Create Team",
+                        color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp
                     )
                     if (homeTeamName.isNotEmpty() && awayTeamName.isNotEmpty()) {
-                        Text(
-                            "$homeTeamName vs $awayTeamName",
-                            color = Color.White.copy(alpha = 0.6f),
-                            fontSize = 11.sp
-                        )
+                        Text("$homeTeamName vs $awayTeamName", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
                     }
                 }
                 Box(modifier = Modifier.size(36.dp))
             }
 
-            // SPORT BADGE (read-only, not a toggle)
+            // SPORT BADGE
             Box(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(50.dp))
+                modifier = Modifier.padding(horizontal = 16.dp).clip(RoundedCornerShape(50.dp))
                     .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
                     .padding(horizontal = 20.dp, vertical = 8.dp)
             ) {
                 Text(
                     if (selectedSport == 0) "⚽  Football" else "🏏  Cricket",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp
                 )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // BUDGET & PLAYERS COUNT BAR
+            // BUDGET BAR
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.1f))
-                    .padding(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.1f)).padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "${selectedPlayers.size}/$maxPlayers",
-                        color = Color.White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp
-                    )
+                    Text("${selectedPlayers.size}/$maxPlayers", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                     Text("Players", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
                 }
                 Box(modifier = Modifier.width(1.dp).height(36.dp).background(Color.White.copy(alpha = 0.2f)))
@@ -354,19 +352,13 @@ fun CreateTeamScreen(
                     Text(
                         "${String.format("%.1f", remainingBudget)} cr",
                         color = if (remainingBudget < 10) Color(0xFFFF5F6D) else Color(0xFF38ef7d),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp
+                        fontWeight = FontWeight.ExtraBold, fontSize = 18.sp
                     )
                     Text("Remaining", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
                 }
                 Box(modifier = Modifier.width(1.dp).height(36.dp).background(Color.White.copy(alpha = 0.2f)))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "${String.format("%.1f", usedBudget)} cr",
-                        color = Color(0xFFFFE082),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp
-                    )
+                    Text("${String.format("%.1f", usedBudget)} cr", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                     Text("Used", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
                 }
             }
@@ -374,16 +366,10 @@ fun CreateTeamScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // POSITION FILTER
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 currentPositions.forEach { pos ->
                     Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp))
                             .background(
                                 if (selectedPosition == pos)
                                     Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
@@ -393,20 +379,14 @@ fun CreateTeamScreen(
                             .clickable { selectedPosition = pos }
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
-                    ) {
-                        Text(pos, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+                    ) { Text(pos, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // PLAYER LIST or LOADING
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
+            if (isLoading || !preLoadDone) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = Color(0xFF8E2DE2))
                         Spacer(modifier = Modifier.height(12.dp))
@@ -414,30 +394,21 @@ fun CreateTeamScreen(
                     }
                 }
             } else if (errorMessage.isNotEmpty()) {
-                Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(errorMessage, color = Color(0xFFFF5F6D), fontSize = 13.sp, textAlign = TextAlign.Center)
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 80.dp)
                 ) {
                     items(filteredPlayers) { player ->
                         val isSelected = player.name in selectedPlayers
-                        val canAdd = !isSelected &&
-                                selectedPlayers.size < maxPlayers &&
-                                remainingBudget >= player.credits
+                        val canAdd = !isSelected && selectedPlayers.size < maxPlayers && remainingBudget >= player.credits
 
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     if (isSelected)
@@ -445,17 +416,10 @@ fun CreateTeamScreen(
                                     else
                                         Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.07f), Color.White.copy(alpha = 0.07f)))
                                 )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color(0xFF8E2DE2) else Color.White.copy(alpha = 0.1f),
-                                    RoundedCornerShape(12.dp)
-                                )
+                                .border(1.dp, if (isSelected) Color(0xFF8E2DE2) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
                                 .clickable {
-                                    if (isSelected) {
-                                        selectedPlayers = selectedPlayers - player.name
-                                    } else if (canAdd) {
-                                        selectedPlayers = selectedPlayers + player.name
-                                    }
+                                    if (isSelected) selectedPlayers = selectedPlayers - player.name
+                                    else if (canAdd) selectedPlayers = selectedPlayers + player.name
                                 }
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -463,14 +427,11 @@ fun CreateTeamScreen(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
                                         .background(positionColor(player.position))
                                         .padding(horizontal = 6.dp, vertical = 3.dp),
                                     contentAlignment = Alignment.Center
-                                ) {
-                                    Text(player.position, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                }
+                                ) { Text(player.position, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
                                     Text(player.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -483,9 +444,7 @@ fun CreateTeamScreen(
                                     Text("${player.points} pts", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
                                 }
                                 Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
+                                    modifier = Modifier.size(28.dp).clip(CircleShape)
                                         .background(
                                             if (isSelected) Color(0xFF38ef7d)
                                             else if (canAdd) Color(0xFF8E2DE2)
@@ -493,13 +452,7 @@ fun CreateTeamScreen(
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        if (isSelected) "✓" else "+",
-                                        color = Color.White,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        textAlign = TextAlign.Center
-                                    )
+                                    Text(if (isSelected) "✓" else "+", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                                 }
                             }
                         }
@@ -508,14 +461,10 @@ fun CreateTeamScreen(
             }
         }
 
-        // SAVE TEAM BUTTON
+        // SAVE BUTTON — enabled when exactly 11 players selected
         Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(16.dp)
-                .clip(RoundedCornerShape(14.dp))
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .navigationBarsPadding().padding(16.dp).clip(RoundedCornerShape(14.dp))
                 .background(
                     if (selectedPlayers.size == maxPlayers)
                         Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
@@ -533,7 +482,11 @@ fun CreateTeamScreen(
                         "sport" to if (selectedSport == 0) "Football" else "Cricket",
                         "players" to selectedPlayers.toList(),
                         "totalCredits" to usedBudget,
-                        "savedAt" to System.currentTimeMillis()
+                        "savedAt" to System.currentTimeMillis(),
+                        "homeTeamName" to homeTeamName,
+                        "awayTeamName" to awayTeamName,
+                        "homeTeamId" to homeTeamId,
+                        "awayTeamId" to awayTeamId
                     )
 
                     db.setValue(teamData)
@@ -551,9 +504,7 @@ fun CreateTeamScreen(
             Text(
                 if (selectedPlayers.size == maxPlayers) "✅ Save Team"
                 else "Select ${maxPlayers - selectedPlayers.size} more players",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
+                color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp
             )
         }
     }
