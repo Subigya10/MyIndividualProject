@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 
@@ -53,7 +54,7 @@ fun loginScreen() {
     var password by remember { mutableStateOf("") }
     var visibility by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val activity=context as Activity
+    val activity = context as Activity
 
     Box(
         modifier = Modifier
@@ -71,7 +72,6 @@ fun loginScreen() {
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.4f))
         )
-
 
         Column(
             modifier = Modifier
@@ -102,10 +102,12 @@ fun loginScreen() {
                         Image(
                             painter = painterResource(R.drawable.baseline_alternate_email_24),
                             contentDescription = null
-
                         )
                     },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .testTag("email"),
                     colors = TextFieldDefaults.colors(
                         unfocusedContainerColor = Color.Transparent,
                         focusedContainerColor = Purple80,
@@ -117,7 +119,7 @@ fun loginScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-
+            // Password Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.8f)),
                 shape = RoundedCornerShape(12.dp),
@@ -132,10 +134,12 @@ fun loginScreen() {
                         Image(
                             painter = painterResource(R.drawable.baseline_key_24),
                             contentDescription = null
-
                         )
                     },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .testTag("password"),
                     colors = TextFieldDefaults.colors(
                         unfocusedContainerColor = Color.Transparent,
                         focusedContainerColor = Purple80,
@@ -192,8 +196,9 @@ fun loginScreen() {
                     }
                 },
                 modifier = Modifier
-                    .fillMaxWidth(0.95f)  // Uses 95% of available width instead of full width
-                    .height(55.dp),
+                    .fillMaxWidth(0.95f)
+                    .height(55.dp)
+                    .testTag("loginBtn"),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                 shape = RoundedCornerShape(30.dp),
                 contentPadding = PaddingValues(0.dp)
@@ -213,7 +218,6 @@ fun loginScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-
             Text(
                 text = "Forgot password?",
                 color = Color.White,
@@ -228,16 +232,12 @@ fun loginScreen() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-
-
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -248,8 +248,6 @@ fun loginScreen() {
                             )
                         )
                 )
-
-
                 Text(
                     "⚡ Continue with ⚡",
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -257,8 +255,6 @@ fun loginScreen() {
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
-
-
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -272,7 +268,6 @@ fun loginScreen() {
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
 
             Row(
                 modifier = Modifier
@@ -319,7 +314,7 @@ fun loginScreen() {
                     }
                 }
 
-
+                // Google Button
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -357,10 +352,10 @@ fun loginScreen() {
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            Row (
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
-            ){
+            ) {
                 Text(
                     text = "New User? ",
                     color = Color.Yellow,
@@ -373,7 +368,6 @@ fun loginScreen() {
                     fontWeight = FontWeight.ExtraBold,
                     textDecoration = TextDecoration.Underline,
                     modifier = Modifier.clickable {
-                        // Navigate to Sign Up screen
                         activity.finish()
                     }
                 )
