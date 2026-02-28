@@ -474,11 +474,13 @@ fun JoinedContestCard(contest: JoinedContest) {
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoins: Int = 1250) {
     val context = LocalContext.current
     val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    // Stats state
     var contestsPlayed by remember { mutableStateOf(0) }
     var contestsWon by remember { mutableStateOf(0) }
     var bestScore by remember { mutableStateOf(0) }
@@ -486,10 +488,28 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
     var cricketContestsPlayed by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(true) }
 
+    // Settings sheet state
+    var activeSheet by remember { mutableStateOf<String?>(null) }
+
+    // Notification prefs (stored in Firebase)
+    var notifContests by remember { mutableStateOf(true) }
+    var notifResults by remember { mutableStateOf(true) }
+    var notifPromos by remember { mutableStateOf(false) }
+
+    // Appearance prefs
+    var selectedTheme by remember { mutableStateOf("Dark") }
+
+    // Privacy prefs
+    var analyticsEnabled by remember { mutableStateOf(true) }
+
     LaunchedEffect(Unit) {
-        val db = com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com").getReference("contests")
+        // Load stats
+        val db = com.google.firebase.database.FirebaseDatabase
+            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+            .getReference("contests")
         db.get().addOnSuccessListener { snapshot ->
-            var played = 0; var won = 0; var best = 0; var footballPlayed = 0; var cricketPlayed = 0
+            var played = 0; var won = 0; var best = 0
+            var footballPlayed = 0; var cricketPlayed = 0
             snapshot.children.forEach { child ->
                 val joinedUsers = child.child("joinedUsers")
                 if (joinedUsers.child(userId).exists()) {
@@ -507,17 +527,334 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
             footballContestsPlayed = footballPlayed; cricketContestsPlayed = cricketPlayed
             isLoading = false
         }
+
+        // Load notification prefs from Firebase
+        val userRef = com.google.firebase.database.FirebaseDatabase
+            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+            .getReference("Users").child(userId).child("settings")
+        userRef.get().addOnSuccessListener { snap ->
+            notifContests = snap.child("notifContests").value as? Boolean ?: true
+            notifResults = snap.child("notifResults").value as? Boolean ?: true
+            notifPromos = snap.child("notifPromos").value as? Boolean ?: false
+            selectedTheme = snap.child("theme").value?.toString() ?: "Dark"
+            analyticsEnabled = snap.child("analyticsEnabled").value as? Boolean ?: true
+        }
     }
 
     val winRate = if (contestsPlayed > 0) (contestsWon * 100 / contestsPlayed) else 0
     val rank = when { winRate >= 70 -> "Elite"; winRate >= 50 -> "Pro"; contestsPlayed > 0 -> "Rookie"; else -> "New Player" }
     val rankEmoji = when (rank) { "Elite" -> "👑"; "Pro" -> "⭐"; "Rookie" -> "🎮"; else -> "🆕" }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    // ── Bottom Sheets ──────────────────────────────────────────────────────────
+
+    // NOTIFICATIONS SHEET
+    if (activeSheet == "Notifications") {
+        ModalBottomSheet(
+            onDismissRequest = { activeSheet = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF1A1A2E),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("🔔 Notifications", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
+                Divider(color = Color.White.copy(alpha = 0.1f))
+
+                val toggles = listOf(
+                    Triple("Contest Alerts", "Notify when new contests open", notifContests),
+                    Triple("Match Results", "Notify when your match result is out", notifResults),
+                    Triple("Promotions", "Bonus coins & special offers", notifPromos)
+                )
+                toggles.forEachIndexed { i, (title, subtitle, state) ->
+                    val current = when (i) { 0 -> notifContests; 1 -> notifResults; else -> notifPromos }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.07f)).padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(subtitle, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = current,
+                            onCheckedChange = { value ->
+                                when (i) {
+                                    0 -> { notifContests = value }
+                                    1 -> { notifResults = value }
+                                    2 -> { notifPromos = value }
+                                }
+                                // Save to Firebase
+                                com.google.firebase.database.FirebaseDatabase
+                                    .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                    .getReference("Users").child(userId).child("settings")
+                                    .child(when (i) { 0 -> "notifContests"; 1 -> "notifResults"; else -> "notifPromos" })
+                                    .setValue(value)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF8E2DE2),
+                                uncheckedThumbColor = Color.Gray,
+                                uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
+                            )
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = { activeSheet = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8E2DE2)),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Save Preferences", fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+
+    // PRIVACY SHEET
+    if (activeSheet == "Privacy") {
+        ModalBottomSheet(
+            onDismissRequest = { activeSheet = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF1A1A2E),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("🔒 Privacy", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
+                Divider(color = Color.White.copy(alpha = 0.1f))
+
+                // Info rows (non-clickable)
+                listOf(
+                    "🛡️  Your data is stored securely on Firebase" to "End-to-end encrypted user data",
+                    "👤  Profile visibility" to "Only contest participants can see your score"
+                ).forEach { (title, desc) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.07f)).padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(desc, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                // Analytics toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.07f)).padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("📊  Analytics", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Anonymous usage data helps improve the app", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = analyticsEnabled,
+                        onCheckedChange = { value ->
+                            analyticsEnabled = value
+                            com.google.firebase.database.FirebaseDatabase
+                                .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                .getReference("Users").child(userId).child("settings")
+                                .child("analyticsEnabled").setValue(value)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF8E2DE2),
+                            uncheckedThumbColor = Color.Gray,
+                            uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
+                        )
+                    )
+                }
+
+                // Delete Account
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFF5F6D).copy(alpha = 0.1f))
+                        .clickable {
+                            android.app.AlertDialog.Builder(context)
+                                .setTitle("Delete Account")
+                                .setMessage("This will permanently delete your account and all data. Are you sure?")
+                                .setPositiveButton("Delete") { _, _ ->
+                                    com.google.firebase.database.FirebaseDatabase
+                                        .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                        .getReference("Users").child(userId).removeValue()
+                                    com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.delete()
+                                    com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                                    context.startActivity(Intent(context, LoginAct::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    })
+                                }
+                                .setNegativeButton("Cancel", null)
+                                .show()
+                        }
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("🗑️  Delete Account", color = Color(0xFFFF5F6D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Permanently remove all your data", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
+                    }
+                    Text("›", color = Color(0xFFFF5F6D), fontSize = 20.sp)
+                }
+            }
+        }
+    }
+
+    // APPEARANCE SHEET
+    if (activeSheet == "Appearance") {
+        ModalBottomSheet(
+            onDismissRequest = { activeSheet = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF1A1A2E),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("🎨 Appearance", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
+                Divider(color = Color.White.copy(alpha = 0.1f))
+                Text("Theme", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                val themes = listOf(
+                    "Dark" to "🌑  Dark Mode",
+                    "Purple" to "💜  Purple Glow",
+                    "Blue" to "💙  Ocean Blue"
+                )
+                themes.forEach { (key, label) ->
+                    val isSelected = selectedTheme == key
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) Color(0xFF8E2DE2).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.07f))
+                            .border(
+                                1.dp,
+                                if (isSelected) Color(0xFF8E2DE2) else Color.Transparent,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .clickable {
+                                selectedTheme = key
+                                com.google.firebase.database.FirebaseDatabase
+                                    .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                    .getReference("Users").child(userId).child("settings").child("theme")
+                                    .setValue(key)
+                            }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        if (isSelected) Text("✓", color = Color(0xFF8E2DE2), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.07f)).padding(16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("ℹ️", fontSize = 18.sp)
+                        Text(
+                            "Theme changes will apply on next app restart.",
+                            color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // HELP & SUPPORT SHEET
+    if (activeSheet == "Help") {
+        ModalBottomSheet(
+            onDismissRequest = { activeSheet = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF1A1A2E),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("❓ Help & Support", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
+                Divider(color = Color.White.copy(alpha = 0.1f))
+
+                val faqs = listOf(
+                    "How do I create a team?" to "Tap 'Create Team' on the Home screen, select a match, then pick your players.",
+                    "How are scores calculated?" to "Players earn points based on real match performance — goals, assists, wickets, and more.",
+                    "When do I get my coins?" to "Coins are awarded automatically after a contest is resolved.",
+                    "How do I join a contest?" to "Tap 'Join Contest' on Home, select your sport, and enter with your coins.",
+                    "My coins are missing?" to "Coins update in real-time. Pull to refresh or restart the app."
+                )
+                faqs.forEach { (question, answer) ->
+                    var expanded by remember { mutableStateOf(false) }
+                    Column(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.07f))
+                            .clickable { expanded = !expanded }
+                            .padding(16.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(question, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            Text(if (expanded) "▲" else "▼", color = Color(0xFF8E2DE2), fontSize = 14.sp)
+                        }
+                        if (expanded) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(answer, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                // Contact Us Button
+                Box(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
+                        .clickable {
+                            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                data = android.net.Uri.parse("mailto:support@fantasysports.com")
+                                putExtra(Intent.EXTRA_SUBJECT, "Support Request - Fantasy Sports App")
+                                putExtra(Intent.EXTRA_TEXT, "Hi Support Team,\n\nUser ID: $userId\n\nIssue: ")
+                            }
+                            try { context.startActivity(intent) } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "No email app found", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("📧 Email Support", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+                }
+            }
+        }
+    }
+
+    // ── Main Profile UI ────────────────────────────────────────────────────────
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        // Avatar
         item {
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(modifier = Modifier.size(90.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.size(90.dp).clip(CircleShape)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(userName.take(1).uppercase(), fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -529,23 +866,48 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 }
             }
         }
+
+        // Stats Row
         item {
             if (isLoading) {
-                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color(0xFF8E2DE2), modifier = Modifier.size(24.dp)) }
+                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(24.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF8E2DE2), modifier = Modifier.size(24.dp))
+                }
             } else {
-                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    StatItem("🔑 $userCoins", "Coins"); VerticalDivider(); StatItem("$contestsPlayed", "Played"); VerticalDivider(); StatItem("$contestsWon", "Won")
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    StatItem("🔑 $userCoins", "Coins")
+                    VerticalDivider()
+                    StatItem("$contestsPlayed", "Played")
+                    VerticalDivider()
+                    StatItem("$contestsWon", "Won")
                 }
             }
         }
+
+        // Win Rate Card
         item {
-            Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(if (winRate >= 50) listOf(Color(0xFF11998e), Color(0xFF38ef7d)) else listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))).padding(16.dp)) {
+            Box(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .background(Brush.horizontalGradient(
+                        if (winRate >= 50) listOf(Color(0xFF11998e), Color(0xFF38ef7d))
+                        else listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
+                    )).padding(16.dp)
+            ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column { Text("Win Rate", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp); Text("$winRate%", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp); Text("$contestsWon wins from $contestsPlayed contests", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp) }
+                    Column {
+                        Text("Win Rate", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+                        Text("$winRate%", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
+                        Text("$contestsWon wins from $contestsPlayed contests", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                    }
                     Text(if (winRate >= 50) "🔥" else "💪", fontSize = 40.sp)
                 }
             }
         }
+
+        // Sport Stats
         item { Text("⚽ Football Stats", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -560,18 +922,58 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 MiniStatCard("$cricketContestsPlayed", "Contests", Color(0xFFf7971e), Color(0xFFffd200), Modifier.weight(1f))
             }
         }
+
+        // Settings
         item { Text("Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("🔔  Notifications", "🔒  Privacy", "🎨  Appearance", "❓  Help & Support", "🚪  Logout").forEach { option ->
-                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.07f)).clickable {
-                        if (option == "🚪  Logout") {
-                            com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
-                            context.startActivity(Intent(context, LoginAct::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK })
-                        }
-                    }.padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(option, color = Color.White, fontSize = 14.sp)
-                        Text("›", color = Color.White.copy(alpha = 0.4f), fontSize = 20.sp)
+                data class SettingsOption(val label: String, val sheetKey: String?)
+
+                val options = listOf(
+                    SettingsOption("🔔  Notifications", "Notifications"),
+                    SettingsOption("🔒  Privacy", "Privacy"),
+                    SettingsOption("🎨  Appearance", "Appearance"),
+                    SettingsOption("❓  Help & Support", "Help"),
+                    SettingsOption("🚪  Logout", null)
+                )
+
+                options.forEach { option ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (option.label.contains("Logout"))
+                                    Color(0xFFFF5F6D).copy(alpha = 0.1f)
+                                else Color.White.copy(alpha = 0.07f)
+                            )
+                            .clickable {
+                                if (option.sheetKey == null) {
+                                    // Logout
+                                    com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                                    context.startActivity(
+                                        Intent(context, LoginAct::class.java).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                        }
+                                    )
+                                } else {
+                                    activeSheet = option.sheetKey
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            option.label,
+                            color = if (option.label.contains("Logout")) Color(0xFFFF5F6D) else Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = if (option.label.contains("Logout")) FontWeight.Bold else FontWeight.Normal
+                        )
+                        Text(
+                            "›",
+                            color = if (option.label.contains("Logout")) Color(0xFFFF5F6D).copy(alpha = 0.6f)
+                            else Color.White.copy(alpha = 0.4f),
+                            fontSize = 20.sp
+                        )
                     }
                 }
             }
@@ -622,30 +1024,110 @@ fun MatchCard(league: String = "IPL T20", teams: String = "IND vs AUS", time: St
 
 @Composable
 fun AlertsContent() {
-    val alerts = listOf(
-        Triple("⚽ Football", "Premier League Fantasy Cup is now open! Join before kickoff.", "2 mins ago"),
-        Triple("🏏 Cricket", "IPL Mega Contest — ₹50 Lakh prize pool. Limited spots!", "15 mins ago"),
-        Triple("⚽ Football", "Champions League Weekly Contest just dropped. 500 players max.", "1 hr ago"),
-        Triple("🏏 Cricket", "T20 World Cup Special Contest — Free entry today only!", "3 hrs ago"),
-        Triple("⚽ Football", "La Liga Fantasy Contest open. Top 3 win cash prizes.", "5 hrs ago"),
-        Triple("🏏 Cricket", "Test Match Contest now live. Build your best XI!", "Yesterday")
-    )
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 20.dp)) {
+    val context = LocalContext.current
+    var contests by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        val db = com.google.firebase.database.FirebaseDatabase
+            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+            .getReference("contests")
+
+        db.get().addOnSuccessListener { snapshot ->
+            val list = mutableListOf<Triple<String, String, String>>()
+            snapshot.children.forEach { child ->
+                val name = child.child("name").value?.toString() ?: ""
+                val sport = child.child("sport").value?.toString() ?: ""
+                val matchName = child.child("matchName").value?.toString() ?: ""
+                val entryCoins = (child.child("entryCoins").value as? Long)?.toInt() ?: 0
+                val prizeCoins = (child.child("prizeCoins").value as? Long)?.toInt() ?: 0
+                val joinedCount = child.child("joinedUsers").childrenCount
+
+                val sportEmoji = if (sport == "Football") "⚽ Football" else "🏏 Cricket"
+                val description = "$matchName — Entry: $entryCoins coins | Prize: $prizeCoins coins | ${joinedCount} joined"
+
+                if (name.isNotEmpty()) {
+                    list.add(Triple(sportEmoji, "$name\n$description", "Live"))
+                }
+            }
+            contests = list
+            isLoading = false
+        }.addOnFailureListener { isLoading = false }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 20.dp)
+    ) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
-        item { Text("🔔 Alerts", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp) }
-        items(alerts) { alert ->
-            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp)).padding(14.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(modifier = Modifier.size(42.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))), contentAlignment = Alignment.Center) { Text("🎯", fontSize = 20.sp) }
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(alert.first, color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text(alert.third, color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🔔 Alerts", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                if (!isLoading) Text("${contests.size} active", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+            }
+        }
+
+        if (isLoading) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF8E2DE2))
+                }
+            }
+        } else if (contests.isEmpty()) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🔔", fontSize = 48.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("No alerts yet!", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("New contests will appear here", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(alert.second, color = Color.White, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))).clickable {}.padding(horizontal = 12.dp, vertical = 5.dp)) {
-                        Text("Join Now", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        } else {
+            items(contests) { alert ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.size(42.dp).clip(CircleShape)
+                            .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
+                        contentAlignment = Alignment.Center
+                    ) { Text("🎯", fontSize = 20.sp) }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(alert.first, color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Box(
+                                modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF38ef7d).copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) { Text("🟢 Live", color = Color(0xFF38ef7d), fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(alert.second, color = Color.White, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                                .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
+                                .clickable {
+                                    context.startActivity(Intent(context, ContestActivity::class.java).apply {
+                                        putExtra("sport", if (alert.first.contains("Football")) "Football" else "Cricket")
+                                    })
+                                }
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        ) { Text("Join Now", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     }
                 }
             }
