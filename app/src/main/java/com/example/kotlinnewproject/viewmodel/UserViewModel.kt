@@ -12,7 +12,12 @@ class UserViewModel(val repo: UserRepo): ViewModel() {
         callback: (Boolean, String) -> Unit
     ){
         repo.login(email,password,callback)
+//        repo.login(email,password){ success, msg ->
+//            callback(false, "Always failing 😈")
+//        }
     }
+
+
 
     fun register(
         email: String, password: String,
