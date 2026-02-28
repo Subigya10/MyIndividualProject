@@ -27,17 +27,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.SimpleDateFormat
+import java.util.*
 
 // ─── Data model for a contest stored in Firebase ───────────────────────────
 data class Contest(
     val id: String = "",
     val name: String = "",
-    val sport: String = "",          // "Football" or "Cricket"
+    val sport: String = "",
     val matchName: String = "",
     val prizeCoins: Int = 0,
     val entryCoins: Int = 0,
     val maxPlayers: Int = 2,
-    val joinedUsers: Map<String, Any> = emptyMap()  // userId -> displayName
+    val joinedUsers: Map<String, Any> = emptyMap(),
+    val matchTime: Long = 0L  // ← NEW: Unix timestamp of match kickoff
 )
 
 class ContestActivity : ComponentActivity() {
@@ -49,6 +52,68 @@ class ContestActivity : ComponentActivity() {
             ContestScreen(sport = sport)
         }
     }
+}
+
+// ─── Deadline helpers ───────────────────────────────────────────────────────
+
+// Returns true if the contest is locked (within 1 hour of match or past it)
+fun isContestLocked(matchTime: Long): Boolean {
+    if (matchTime == 0L) return false // no deadline set = open
+    val now = System.currentTimeMillis()
+    val oneHourBefore = matchTime - (60 * 60 * 1000L)
+    return now >= oneHourBefore
+}
+
+// Returns a human-readable countdown string e.g. "Locks in 2h 30m"
+fun lockCountdown(matchTime: Long): String {
+    if (matchTime == 0L) return ""
+    val now = System.currentTimeMillis()
+    val oneHourBefore = matchTime - (60 * 60 * 1000L)
+    val diff = oneHourBefore - now
+    if (diff <= 0) return "🔒 Locked"
+    val hours = diff / (1000 * 60 * 60)
+    val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
+    return when {
+        hours > 0 -> "⏰ Locks in ${hours}h ${minutes}m"
+        else -> "⏰ Locks in ${minutes}m"
+    }
+}
+
+// ─── Real score calculation ─────────────────────────────────────────────────
+//
+// Instead of random numbers, we score each player based on:
+//   - Their saved `points` value from Firebase (real player rating)
+//   - A position multiplier (captains/key roles score more)
+//   - A small performance variance (±15%) to simulate match day
+//
+// Position multipliers:
+//   GK/WK  → 1.0x  (baseline)
+//   DEF/BAT → 1.1x
+//   MID/AR  → 1.2x
+//   FWD/BOWL → 1.3x  (attackers score most in fantasy)
+//
+fun positionMultiplier(position: String): Double {
+    return when (position) {
+        "GK", "WK" -> 1.0
+        "DEF", "BAT" -> 1.1
+        "MID", "AR" -> 1.2
+        "FWD", "BOWL" -> 1.3
+        else -> 1.0
+    }
+}
+
+// Calculate a team's fantasy score from their saved player list + position data
+// playerData: map of playerName -> Pair(position, basePoints)
+fun calculateTeamScore(playerNames: List<String>, playerData: Map<String, Pair<String, Int>>): Int {
+    var total = 0.0
+    playerNames.forEach { name ->
+        val (position, basePoints) = playerData[name] ?: Pair("MID", 150)
+        val multiplier = positionMultiplier(position)
+        // ±15% variance to simulate match performance
+        val variance = 0.85 + (Math.random() * 0.30) // 0.85 to 1.15
+        total += basePoints * multiplier * variance
+    }
+    return total.toInt()
 }
 
 @Composable
@@ -68,10 +133,22 @@ fun ContestScreen(sport: String = "Football") {
     var joiningContestId by remember { mutableStateOf<String?>(null) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
 
+    // ── Ticker — refreshes every minute so countdown updates live ──────────
+    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000L)
+            currentTime = System.currentTimeMillis()
+        }
+    }
+
     val sportNode = if (sport == "Football") "footballTeam" else "cricketTeam"
     val sportEmoji = if (sport == "Football") "⚽" else "🏏"
 
-    // Load user's coins + check if they have a saved team
+    // Load user's coins + check saved team + load player position data
+    // We store playerData as name -> (position, points) for scoring
+    var playerData by remember { mutableStateOf<Map<String, Pair<String, Int>>>(emptyMap()) }
+
     LaunchedEffect(Unit) {
         db.child("Users").child(userId).get().addOnSuccessListener { snapshot ->
             userCoins = (snapshot.child("coins").value as? Long)?.toInt() ?: 1250
@@ -99,7 +176,8 @@ fun ContestScreen(sport: String = "Football") {
                             prizeCoins = (child.child("prizeCoins").value as? Long)?.toInt() ?: 0,
                             entryCoins = (child.child("entryCoins").value as? Long)?.toInt() ?: 0,
                             maxPlayers = (child.child("maxPlayers").value as? Long)?.toInt() ?: 2,
-                            joinedUsers = joined
+                            joinedUsers = joined,
+                            matchTime = (child.child("matchTime").value as? Long) ?: 0L
                         ))
                     }
                 }
@@ -114,21 +192,25 @@ fun ContestScreen(sport: String = "Football") {
         onDispose { db.child("contests").removeEventListener(listener) }
     }
 
-    // Seed default contests if none exist for this sport
+    // Seed default contests if none exist — now with matchTime set to 48h from now
     LaunchedEffect(Unit) {
         db.child("contests").get().addOnSuccessListener { snapshot ->
             val hasSportContests = snapshot.children.any {
                 it.child("sport").value?.toString() == sport
             }
             if (!hasSportContests) {
+                // Set match kickoff 48 hours from now so there's plenty of time to join
+                val kickoff48h = System.currentTimeMillis() + (48 * 60 * 60 * 1000L)
+                val kickoff72h = System.currentTimeMillis() + (72 * 60 * 60 * 1000L)
+
                 val defaults = if (sport == "Football") listOf(
-                    mapOf("name" to "⚽ Head-to-Head Clash", "sport" to "Football", "matchName" to "Premier League", "prizeCoins" to 500, "entryCoins" to 100, "maxPlayers" to 2),
-                    mapOf("name" to "🏆 Mini League", "sport" to "Football", "matchName" to "Premier League", "prizeCoins" to 1000, "entryCoins" to 200, "maxPlayers" to 2),
-                    mapOf("name" to "💎 Big Win Contest", "sport" to "Football", "matchName" to "Champions League", "prizeCoins" to 2000, "entryCoins" to 300, "maxPlayers" to 2)
+                    mapOf("name" to "⚽ Head-to-Head Clash", "sport" to "Football", "matchName" to "Premier League", "prizeCoins" to 500, "entryCoins" to 100, "maxPlayers" to 2, "matchTime" to kickoff48h),
+                    mapOf("name" to "🏆 Mini League", "sport" to "Football", "matchName" to "Premier League", "prizeCoins" to 1000, "entryCoins" to 200, "maxPlayers" to 2, "matchTime" to kickoff48h),
+                    mapOf("name" to "💎 Big Win Contest", "sport" to "Football", "matchName" to "Champions League", "prizeCoins" to 2000, "entryCoins" to 300, "maxPlayers" to 2, "matchTime" to kickoff72h)
                 ) else listOf(
-                    mapOf("name" to "🏏 Cricket Duel", "sport" to "Cricket", "matchName" to "T20 World Cup", "prizeCoins" to 500, "entryCoins" to 100, "maxPlayers" to 2),
-                    mapOf("name" to "🏆 T20 League", "sport" to "Cricket", "matchName" to "IPL T20", "prizeCoins" to 1000, "entryCoins" to 200, "maxPlayers" to 2),
-                    mapOf("name" to "💎 Cricket Grand Prix", "sport" to "Cricket", "matchName" to "International T20", "prizeCoins" to 2000, "entryCoins" to 300, "maxPlayers" to 2)
+                    mapOf("name" to "🏏 Cricket Duel", "sport" to "Cricket", "matchName" to "T20 World Cup", "prizeCoins" to 500, "entryCoins" to 100, "maxPlayers" to 2, "matchTime" to kickoff48h),
+                    mapOf("name" to "🏆 T20 League", "sport" to "Cricket", "matchName" to "IPL T20", "prizeCoins" to 1000, "entryCoins" to 200, "maxPlayers" to 2, "matchTime" to kickoff48h),
+                    mapOf("name" to "💎 Cricket Grand Prix", "sport" to "Cricket", "matchName" to "International T20", "prizeCoins" to 2000, "entryCoins" to 300, "maxPlayers" to 2, "matchTime" to kickoff72h)
                 )
                 defaults.forEach { contestData ->
                     db.child("contests").push().setValue(contestData)
@@ -137,7 +219,7 @@ fun ContestScreen(sport: String = "Football") {
         }
     }
 
-    // Join a contest & calculate winner if full
+    // ── Join contest with REAL scoring ─────────────────────────────────────
     fun joinContest(contest: Contest) {
         if (!hasSavedTeam) {
             resultMessage = "❌ You need to save a $sport team first!"
@@ -155,69 +237,126 @@ fun ContestScreen(sport: String = "Football") {
             resultMessage = "❌ Not enough coins! Need ${contest.entryCoins}"
             return
         }
+        // ── DEADLINE CHECK ──────────────────────────────────────────────────
+        if (isContestLocked(contest.matchTime)) {
+            resultMessage = "🔒 Contest is locked — match starts soon!"
+            return
+        }
 
         joiningContestId = contest.id
         val displayName = currentUser?.email?.substringBefore("@") ?: "Player"
         val contestRef = db.child("contests").child(contest.id)
 
-        // Deduct entry coins from user
-        db.child("Users").child(userId).child("coins")
-            .setValue(userCoins - contest.entryCoins)
+        // Deduct entry coins
+        db.child("Users").child(userId).child("coins").setValue(userCoins - contest.entryCoins)
         userCoins -= contest.entryCoins
 
         // Add user to contest
         contestRef.child("joinedUsers").child(userId).setValue(displayName)
             .addOnSuccessListener {
-                // Check if contest is now full → calculate winner
                 val updatedJoined = contest.joinedUsers.toMutableMap()
                 updatedJoined[userId] = displayName
 
                 if (updatedJoined.size >= contest.maxPlayers) {
-                    // Calculate scores for all joined users
                     val otherUserId = updatedJoined.keys.first { it != userId }
 
-                    // Get both teams' player points from Firebase
+                    // ── REAL SCORE CALCULATION ──────────────────────────────
+                    // Step 1: Load MY saved team's player names
                     db.child("Users").child(userId).child(sportNode).child("players")
                         .get().addOnSuccessListener { mySnap ->
-                            val myPlayers = mySnap.children.map { it.value?.toString() ?: "" }
+                            val myPlayerNames = mySnap.children.map { it.value?.toString() ?: "" }
 
+                            // Step 2: Load OPPONENT's saved team's player names
                             db.child("Users").child(otherUserId).child(sportNode).child("players")
                                 .get().addOnSuccessListener { theirSnap ->
-                                    val theirPlayers = theirSnap.children.map { it.value?.toString() ?: "" }
+                                    val theirPlayerNames = theirSnap.children.map { it.value?.toString() ?: "" }
 
-                                    // Simulate points: each player gets random score 50-200
-                                    val myScore = myPlayers.sumOf { (50..200).random() }
-                                    val theirScore = theirPlayers.sumOf { (50..200).random() }
+                                    // Step 3: Load player position+points data from Firebase
+                                    // We look up each player's stats from the squads node
+                                    val allPlayerNames = (myPlayerNames + theirPlayerNames).distinct()
+                                    val resolvedData = mutableMapOf<String, Pair<String, Int>>()
 
-                                    val winnerId = if (myScore >= theirScore) userId else otherUserId
-                                    val iWon = winnerId == userId
+                                    // For football: look up from football API cache or use position defaults
+                                    // For cricket: look up from cricket/squads in Firebase
+                                    // We fetch the squad data to get position & points for each player
+                                    val squadRef = if (sport == "Cricket")
+                                        db.child("cricket").child("squads")
+                                    else
+                                        db.child("footballSquads") // cache node (may not exist, fallback below)
 
-                                    // Save result to Firebase
-                                    val result = mapOf(
-                                        "winnerId" to winnerId,
-                                        "scores" to mapOf(
-                                            userId to myScore,
-                                            otherUserId to theirScore
-                                        ),
-                                        "resolved" to true
-                                    )
-                                    contestRef.child("result").setValue(result)
-
-                                    // Award prize to winner
-                                    db.child("Users").child(winnerId).child("coins").get()
-                                        .addOnSuccessListener { coinSnap ->
-                                            val currentCoins = (coinSnap.value as? Long)?.toInt() ?: 1250
-                                            db.child("Users").child(winnerId).child("coins")
-                                                .setValue(currentCoins + contest.prizeCoins)
+                                    // Try to load cached squad data, fallback to position-based defaults
+                                    squadRef.get().addOnCompleteListener { task ->
+                                        if (task.isSuccessful && task.result.exists()) {
+                                            // Parse squad data: format "name|position|credits|points"
+                                            task.result.children.forEach { teamSnap ->
+                                                teamSnap.children.forEach { playerSnap ->
+                                                    val raw = playerSnap.value?.toString() ?: return@forEach
+                                                    val parts = raw.split("|")
+                                                    if (parts.size >= 4) {
+                                                        val name = parts[0]
+                                                        val pos = parts[1]
+                                                        val pts = parts[3].toIntOrNull() ?: 150
+                                                        if (name in allPlayerNames) {
+                                                            resolvedData[name] = Pair(pos, pts)
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
 
-                                    if (iWon) {
-                                        userCoins += contest.prizeCoins
-                                        resultMessage = "🎉 You WON! +${contest.prizeCoins} coins!\nYour score: $myScore vs their score: $theirScore"
-                                    } else {
-                                        resultMessage = "😔 You lost this time!\nYour score: $myScore vs their score: $theirScore\nBetter luck next time!"
+                                        // Fill in any missing players with position-based defaults
+                                        // (football players may not be in the cache node)
+                                        allPlayerNames.forEach { name ->
+                                            if (name !in resolvedData) {
+                                                // Default: MID position, 150 base points
+                                                resolvedData[name] = Pair("MID", 150)
+                                            }
+                                        }
+
+                                        // Step 4: Calculate scores using real position weights
+                                        val myScore = calculateTeamScore(myPlayerNames, resolvedData)
+                                        val theirScore = calculateTeamScore(theirPlayerNames, resolvedData)
+
+                                        val winnerId = if (myScore >= theirScore) userId else otherUserId
+                                        val iWon = winnerId == userId
+
+                                        // Step 5: Save result to Firebase
+                                        val result = mapOf(
+                                            "winnerId" to winnerId,
+                                            "scores" to mapOf(
+                                                userId to myScore,
+                                                otherUserId to theirScore
+                                            ),
+                                            "resolved" to true
+                                        )
+                                        contestRef.child("result").setValue(result)
+
+                                        // Step 6: Award prize coins to winner
+                                        db.child("Users").child(winnerId).child("coins").get()
+                                            .addOnSuccessListener { coinSnap ->
+                                                val currentCoins = (coinSnap.value as? Long)?.toInt() ?: 1250
+                                                db.child("Users").child(winnerId).child("coins")
+                                                    .setValue(currentCoins + contest.prizeCoins)
+                                            }
+
+                                        // Step 7: Show result
+                                        val myTopPlayer = myPlayerNames.maxByOrNull {
+                                            val (pos, pts) = resolvedData[it] ?: Pair("MID", 150)
+                                            (pts * positionMultiplier(pos)).toInt()
+                                        } ?: ""
+
+                                        if (iWon) {
+                                            userCoins += contest.prizeCoins
+                                            resultMessage = "🎉 You WON! +${contest.prizeCoins} coins!\n" +
+                                                    "Your score: $myScore vs their score: $theirScore\n" +
+                                                    "⭐ Best player: $myTopPlayer"
+                                        } else {
+                                            resultMessage = "😔 So close! You lost by ${theirScore - myScore} pts\n" +
+                                                    "Your score: $myScore vs their score: $theirScore\n" +
+                                                    "💪 Better luck next time!"
+                                        }
+                                        joiningContestId = null
                                     }
-                                    joiningContestId = null
                                 }
                         }
                 } else {
@@ -227,6 +366,7 @@ fun ContestScreen(sport: String = "Football") {
             }
     }
 
+    // ── UI ──────────────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(R.drawable.iphone),
@@ -258,7 +398,6 @@ fun ContestScreen(sport: String = "Football") {
                     color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp
                 )
 
-                // Coins display
                 Box(
                     modifier = Modifier.clip(RoundedCornerShape(20.dp))
                         .background(Color.White.copy(alpha = 0.15f))
@@ -286,30 +425,23 @@ fun ContestScreen(sport: String = "Football") {
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Result message popup
+            // Result message
             resultMessage?.let { msg ->
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(
-                            if (msg.contains("WON"))
-                                Brush.horizontalGradient(listOf(Color(0xFF11998e), Color(0xFF38ef7d)))
-                            else if (msg.contains("Waiting"))
-                                Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
-                            else
-                                Brush.horizontalGradient(listOf(Color(0xFFFF5F6D), Color(0xFFFFC371)))
+                            when {
+                                msg.contains("WON") -> Brush.horizontalGradient(listOf(Color(0xFF11998e), Color(0xFF38ef7d)))
+                                msg.contains("Waiting") -> Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
+                                else -> Brush.horizontalGradient(listOf(Color(0xFFFF5F6D), Color(0xFFFFC371)))
+                            }
                         )
                         .padding(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(msg, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f))
-                        Text("✕", color = Color.White, fontSize = 16.sp,
-                            modifier = Modifier.clickable { resultMessage = null })
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                        Text(msg, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("✕", color = Color.White, fontSize = 16.sp, modifier = Modifier.clickable { resultMessage = null })
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -329,7 +461,8 @@ fun ContestScreen(sport: String = "Football") {
                         val alreadyJoined = userId in contest.joinedUsers
                         val isFull = contest.joinedUsers.size >= contest.maxPlayers
                         val isJoining = joiningContestId == contest.id
-                        val isResolved = contest.joinedUsers.size >= contest.maxPlayers && alreadyJoined
+                        val locked = isContestLocked(contest.matchTime)
+                        val countdown = lockCountdown(contest.matchTime)
 
                         Box(
                             modifier = Modifier.fillMaxWidth()
@@ -341,14 +474,17 @@ fun ContestScreen(sport: String = "Football") {
                                 )
                                 .border(
                                     1.dp,
-                                    if (alreadyJoined) Color(0xFF38ef7d).copy(alpha = 0.5f)
-                                    else Color.White.copy(alpha = 0.15f),
+                                    when {
+                                        locked && !alreadyJoined -> Color(0xFFFF5F6D).copy(alpha = 0.4f)
+                                        alreadyJoined -> Color(0xFF38ef7d).copy(alpha = 0.5f)
+                                        else -> Color.White.copy(alpha = 0.15f)
+                                    },
                                     RoundedCornerShape(16.dp)
                                 )
                                 .padding(16.dp)
                         ) {
                             Column {
-                                // Contest name + match
+                                // Contest name + prize
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -358,7 +494,6 @@ fun ContestScreen(sport: String = "Football") {
                                         Text(contest.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                         Text(contest.matchName, color = Color(0xFF8E2DE2), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
-                                    // Prize badge
                                     Box(
                                         modifier = Modifier.clip(RoundedCornerShape(8.dp))
                                             .background(Brush.horizontalGradient(listOf(Color(0xFFFFD700).copy(alpha = 0.2f), Color(0xFFFFC371).copy(alpha = 0.2f))))
@@ -369,13 +504,36 @@ fun ContestScreen(sport: String = "Football") {
                                     }
                                 }
 
+                                // ── Deadline countdown badge ──────────────────
+                                if (countdown.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                if (locked) Color(0xFFFF5F6D).copy(alpha = 0.15f)
+                                                else Color(0xFFFFE082).copy(alpha = 0.15f)
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (locked) Color(0xFFFF5F6D).copy(alpha = 0.4f)
+                                                else Color(0xFFFFE082).copy(alpha = 0.4f),
+                                                RoundedCornerShape(6.dp)
+                                            )
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            countdown,
+                                            color = if (locked) Color(0xFFFF5F6D) else Color(0xFFFFE082),
+                                            fontSize = 11.sp, fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
                                 Spacer(modifier = Modifier.height(12.dp))
 
                                 // Stats row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text("Entry", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
                                         Text("🔑 ${contest.entryCoins}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -401,11 +559,11 @@ fun ContestScreen(sport: String = "Football") {
                                         .background(
                                             when {
                                                 alreadyJoined -> Brush.horizontalGradient(listOf(Color(0xFF11998e), Color(0xFF38ef7d)))
-                                                isFull -> Brush.horizontalGradient(listOf(Color.Gray.copy(alpha = 0.4f), Color.Gray.copy(alpha = 0.4f)))
+                                                locked || isFull -> Brush.horizontalGradient(listOf(Color.Gray.copy(alpha = 0.4f), Color.Gray.copy(alpha = 0.4f)))
                                                 else -> Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
                                             }
                                         )
-                                        .clickable(enabled = !alreadyJoined && !isFull && !isJoining) {
+                                        .clickable(enabled = !alreadyJoined && !isFull && !isJoining && !locked) {
                                             joinContest(contest)
                                         }
                                         .padding(vertical = 12.dp),
@@ -418,6 +576,7 @@ fun ContestScreen(sport: String = "Football") {
                                             when {
                                                 alreadyJoined && isFull -> "✅ Played"
                                                 alreadyJoined -> "✅ Joined — Waiting for opponent"
+                                                locked -> "🔒 Joining Closed"
                                                 isFull -> "Contest Full"
                                                 else -> "Join Contest  •  🔑 ${contest.entryCoins}"
                                             },
