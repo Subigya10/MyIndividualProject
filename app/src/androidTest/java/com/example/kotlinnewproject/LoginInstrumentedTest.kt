@@ -37,7 +37,7 @@ class LoginInstrumentedTest {
 
         // Type password
         composeRule.onNodeWithTag("password")
-            .performTextInput("subi123")
+            .performTextInput("subi111")
 
         // Click login button
         composeRule.onNodeWithTag("loginBtn")
