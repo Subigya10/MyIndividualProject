@@ -41,11 +41,11 @@ class SignupInstrumentedTest {
 
         // Type password
         composeRule.onNodeWithTag("regPassword")
-            .performTextInput("test1234")
+            .performTextInput("Test@123")
 
         // Type confirm password
         composeRule.onNodeWithTag("confirmPassword")
-            .performTextInput("test1234")
+            .performTextInput("Test@123")
 
         // Check the checkbox
         composeRule.onNodeWithTag("checkbox")

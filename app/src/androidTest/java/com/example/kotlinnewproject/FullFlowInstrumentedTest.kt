@@ -40,10 +40,10 @@ class FullFlowInstrumentedTest {
             .performTextInput("flowtest999@gmail.com")
 
         composeRule.onNodeWithTag("regPassword")
-            .performTextInput("test1234")
+            .performTextInput("Test@123")
 
         composeRule.onNodeWithTag("confirmPassword")
-            .performTextInput("test1234")
+            .performTextInput("Test@123")
 
         composeRule.onNodeWithTag("checkbox")
             .performClick()
@@ -62,7 +62,7 @@ class FullFlowInstrumentedTest {
             .performTextInput("flowtest999@gmail.com")
 
         composeRule.onNodeWithTag("password")
-            .performTextInput("test1234")
+            .performTextInput("Test@123")
 
         composeRule.onNodeWithTag("loginBtn")
             .performClick()

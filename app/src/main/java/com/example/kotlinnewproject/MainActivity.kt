@@ -233,11 +233,16 @@ fun registerme() {
                             singleLine = true
                         )
 
+                        val hasUppercase = Password.any { it.isUpperCase() }
+                        val hasSpecial = Password.any { !it.isLetterOrDigit() }
+                        val isLongEnough = Password.length >= 6
+
                         val (strengthText, strengthColor) = when {
                             Password.isEmpty() -> "" to Color.Transparent
-                            Password.length < 4 -> "Weak" to Color.Red
-                            Password.length < 8 -> "Medium" to Color.Yellow
-                            else -> "Strong" to Color.Green
+                            !isLongEnough -> "Min 6 characters required" to Color.Red
+                            !hasUppercase -> "Add at least 1 uppercase letter" to Color.Red
+                            !hasSpecial -> "Add at least 1 special character" to Color.Red
+                            else -> "Strong ✓" to Color.Green
                         }
                         if (strengthText.isNotEmpty()) {
                             Text(text = "Strength: $strengthText", color = strengthColor, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, top = 2.dp))
@@ -330,6 +335,13 @@ fun registerme() {
                             Toast.makeText(context, "Please enter a valid email", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
+                        val hasUppercase = Password.any { it.isUpperCase() }
+                        val hasSpecial = Password.any { !it.isLetterOrDigit() }
+                        if (Password.length < 6 || !hasUppercase || !hasSpecial) {
+                            Toast.makeText(context, "Password must be 6+ chars, 1 uppercase, 1 special character", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
                         if (Password != ConfirmPassword) {
                             Toast.makeText(context, "Passwords do not match", Toast.LENGTH_SHORT).show()
                             return@Button
