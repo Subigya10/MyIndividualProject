@@ -109,6 +109,12 @@ fun registerme() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(70.dp))
+                Image(
+                    painter = painterResource(R.drawable.newlogo),
+                    contentDescription = null,
+                    modifier = Modifier.size(80.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 Text("Create a fantasy app", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text("Create your account and start building your team", color = Color.White)

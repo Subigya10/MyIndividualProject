@@ -82,8 +82,14 @@ fun loginScreen() {
             verticalArrangement = Arrangement.Center
         ) {
             Spacer(modifier = Modifier.height(80.dp))
+            Image(
+                painter = painterResource(R.drawable.newlogo),
+                contentDescription = null,
+                modifier = Modifier.size(80.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Text("Welcome Back", fontSize = 22.sp, color = Color.White)
+            Text("Welcome Back", fontSize = 32.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
             Text("Login to your account", fontSize = 14.sp, color = Color.White)
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -361,7 +367,7 @@ fun loginScreen() {
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = "New User? ",

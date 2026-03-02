@@ -83,7 +83,7 @@
         <activity android:name=".MatchSelectionActivity" android:theme="@style/Theme.Kotlinnewproject" />
         <activity android:name=".ContestActivity" android:theme="@style/Theme.Kotlinnewproject" />
         <activity android:name=".AdminActivity" android:theme="@style/Theme.Kotlinnewproject" />
-
+        <activity android:name=".OnboardingActivity" android:theme="@style/Theme.Kotlinnewproject" />
 
 
     </application>

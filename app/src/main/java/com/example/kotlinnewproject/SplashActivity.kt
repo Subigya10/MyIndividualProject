@@ -1,6 +1,7 @@
 package com.example.kotlinnewproject
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -51,7 +52,11 @@ fun SquadXISplash(preview: Boolean = false) {
         LaunchedEffect(Unit) {
             delay(2500)
             activity?.let {
-                context.startActivity(Intent(context, WelcomeActivity::class.java))
+                val prefs = context.getSharedPreferences("squadxi_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putBoolean("onboarding_done", false).apply()
+                val onboardingDone = prefs.getBoolean("onboarding_done", false)
+                val nextScreen = if (onboardingDone) WelcomeActivity::class.java else OnboardingActivity::class.java
+                context.startActivity(Intent(context, nextScreen))
                 it.finish()
             }
         }
