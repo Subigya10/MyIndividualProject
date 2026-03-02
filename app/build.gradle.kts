@@ -59,6 +59,7 @@ dependencies {
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.5.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    implementation("io.coil-kt:coil-compose:2.4.0")
     
     implementation(libs.androidx.compose.material3)
     implementation(libs.firebase.auth)

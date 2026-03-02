@@ -33,6 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
+import java.io.InputStream
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1177,12 +1183,69 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
         item { Spacer(modifier = Modifier.height(20.dp)) }
         item {
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                var profilePicUrl by remember { mutableStateOf<String?>(null) }
+                var isUploading by remember { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
+
+                LaunchedEffect(userId) {
+                    com.google.firebase.database.FirebaseDatabase
+                        .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                        .getReference("Users").child(userId).child("profilePic")
+                        .get().addOnSuccessListener { snap ->
+                            profilePicUrl = snap.value?.toString()
+                        }
+                }
+
+                val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+                    uri?.let {
+                        isUploading = true
+                        scope.launch(Dispatchers.IO) {
+                            val url = uploadToCloudinary(context, it)
+                            if (url != null) {
+                                profilePicUrl = url
+                                com.google.firebase.database.FirebaseDatabase
+                                    .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                    .getReference("Users").child(userId).child("profilePic").setValue(url)
+                            }
+                            isUploading = false
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier.size(90.dp).clip(CircleShape)
-                        .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
+                        .clickable { launcher.launch("image/*") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(userName.take(1).uppercase(), fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+                    if (profilePicUrl != null) {
+                        AsyncImage(
+                            model = profilePicUrl,
+                            contentDescription = "Profile Picture",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                                .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(userName.take(1).uppercase(), fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                    if (isUploading) {
+                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier.align(Alignment.BottomEnd).size(24.dp).clip(CircleShape)
+                                .background(Color(0xFF8E2DE2)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("📷", fontSize = 12.sp)
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(userName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
@@ -1359,7 +1422,8 @@ fun AlertsContent() {
                 val prizeCoins = (child.child("prizeCoins").value as? Long)?.toInt() ?: 0
                 val joinedCount = child.child("joinedUsers").childrenCount
                 val sportEmoji = if (sport == "Football") "⚽ Football" else "🏏 Cricket"
-                val description = "$matchName — Entry: $entryCoins coins | Prize: $prizeCoins coins | ${joinedCount} joined"
+                val description =
+                    "$matchName — Entry: $entryCoins coins | Prize: $prizeCoins coins | ${joinedCount} joined"
                 if (name.isNotEmpty()) list.add(Triple(sportEmoji, "$name\n$description", "Live"))
             }
             contests = list
@@ -1374,25 +1438,53 @@ fun AlertsContent() {
     ) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("🔔 Alerts", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                if (!isLoading) Text("${contests.size} active", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "🔔 Alerts",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp
+                )
+                if (!isLoading) Text(
+                    "${contests.size} active",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 12.sp
+                )
             }
         }
         if (isLoading) {
             item {
-                Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator(color = Color(0xFF8E2DE2))
                 }
             }
         } else if (contests.isEmpty()) {
             item {
-                Box(modifier = Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("🔔", fontSize = 48.sp)
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("No alerts yet!", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("New contests will appear here", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                        Text(
+                            "No alerts yet!",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            "New contests will appear here",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
@@ -1408,31 +1500,74 @@ fun AlertsContent() {
                 ) {
                     Box(
                         modifier = Modifier.size(42.dp).clip(CircleShape)
-                            .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xFF8E2DE2),
+                                        Color(0xFF4A00E0)
+                                    )
+                                )
+                            ),
                         contentAlignment = Alignment.Center
                     ) { Text("🎯", fontSize = 20.sp) }
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(alert.first, color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                alert.first,
+                                color = Color(0xFFFFE082),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                             Box(
                                 modifier = Modifier.clip(RoundedCornerShape(6.dp))
                                     .background(Color(0xFF38ef7d).copy(alpha = 0.15f))
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) { Text("🟢 Live", color = Color(0xFF38ef7d), fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                            ) {
+                                Text(
+                                    "🟢 Live",
+                                    color = Color(0xFF38ef7d),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(alert.second, color = Color.White, fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         Box(
                             modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                                .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFF8E2DE2),
+                                            Color(0xFF4A00E0)
+                                        )
+                                    )
+                                )
                                 .clickable {
-                                    context.startActivity(Intent(context, ContestActivity::class.java).apply {
-                                        putExtra("sport", if (alert.first.contains("Football")) "Football" else "Cricket")
-                                    })
+                                    context.startActivity(
+                                        Intent(
+                                            context,
+                                            ContestActivity::class.java
+                                        ).apply {
+                                            putExtra(
+                                                "sport",
+                                                if (alert.first.contains("Football")) "Football" else "Cricket"
+                                            )
+                                        })
                                 }
                                 .padding(horizontal = 12.dp, vertical = 5.dp)
-                        ) { Text("Join Now", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        ) {
+                            Text(
+                                "Join Now",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -1440,3 +1575,30 @@ fun AlertsContent() {
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
+    suspend fun uploadToCloudinary(context: android.content.Context, uri: Uri): String? {
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            try {
+                val stream: InputStream = context.contentResolver.openInputStream(uri) ?: return@withContext null
+                val bytes = stream.readBytes()
+                stream.close()
+                val boundary = "Boundary${System.currentTimeMillis()}"
+                val url = java.net.URL("https://api.cloudinary.com/v1_1/dbuncl4hg/image/upload")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                val body = java.io.ByteArrayOutputStream()
+                fun field(name: String, value: String) {
+                    body.write("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray())
+                }
+                field("upload_preset", "profile_pics")
+                body.write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".toByteArray())
+                body.write(bytes)
+                body.write("\r\n--$boundary--\r\n".toByteArray())
+                conn.outputStream.write(body.toByteArray())
+                val response = conn.inputStream.bufferedReader().readText()
+                val urlMatch = Regex("\"secure_url\":\"([^\"]+)\"").find(response)
+                urlMatch?.groupValues?.get(1)?.replace("\\/", "/")
+            } catch (e: Exception) { null }
+        }
+    }
