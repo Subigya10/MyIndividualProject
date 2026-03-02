@@ -40,6 +40,7 @@ class DashboardActivity : ComponentActivity() {
         enableEdgeToEdge()
         val userName = intent.getStringExtra("userName") ?: "Player"
         val userEmail = intent.getStringExtra("userEmail") ?: ""
+
         setContent {
             DashboardScreen(userName = userName, userEmail = userEmail)
         }

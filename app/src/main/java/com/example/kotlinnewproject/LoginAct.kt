@@ -176,13 +176,20 @@ fun loginScreen() {
                                     Toast.makeText(context, "Login successful", Toast.LENGTH_SHORT).show()
                                     val userId = auth.currentUser?.uid ?: ""
                                     val userEmail = auth.currentUser?.email ?: ""
-                                    val db = com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com").getReference("Users").child(userId)
+                                    val db = com.google.firebase.database.FirebaseDatabase
+                                        .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                        .getReference("Users").child(userId)
                                     db.get().addOnSuccessListener { snapshot ->
                                         val firstName = snapshot.child("firstName").value?.toString() ?: "Player"
                                         val lastName = snapshot.child("lastName").value?.toString() ?: ""
                                         val fullName = "$firstName $lastName".trim()
+                                        val isAdmin = snapshot.child("isAdmin").value as? Boolean ?: false
                                         Toast.makeText(context, "Got: $fullName", Toast.LENGTH_LONG).show()
-                                        val intent = Intent(context, DashboardActivity::class.java)
+                                        val intent = if (isAdmin) {
+                                            Intent(context, AdminActivity::class.java)
+                                        } else {
+                                            Intent(context, DashboardActivity::class.java)
+                                        }
                                         intent.putExtra("userName", fullName)
                                         intent.putExtra("userEmail", userEmail)
                                         context.startActivity(intent)
