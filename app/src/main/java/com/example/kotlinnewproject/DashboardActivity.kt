@@ -36,6 +36,13 @@ import kotlinx.coroutines.withContext
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.EaseInOutSine
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.io.InputStream
@@ -177,6 +184,16 @@ fun HomeContent(
     var cricketMatches by remember { mutableStateOf<List<Match>>(emptyList()) }
     var isLoadingFootball by remember { mutableStateOf(true) }
     var isLoadingCricket by remember { mutableStateOf(true) }
+    // Pulsing animation for LIVE badge
+    val livePulse = rememberInfiniteTransition()
+    val livePulseScale by livePulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween  (600, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        )
+    )
 
     // ── LIVE SCORES from Firebase ─────────────────────────────────────────────
     var liveMatches by remember { mutableStateOf<Map<String, Map<String, Any>>>(emptyMap()) }
@@ -281,30 +298,50 @@ fun HomeContent(
 
         // ── Header ────────────────────────────────────────────────────────────
         item {
+            // Greeting header
+            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            val greeting = when {
+                hour < 12 -> "Good morning"
+                hour < 17 -> "Good afternoon"
+                else -> "Good evening"
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painterResource(R.drawable.baseline_key_24), "trophy", tint = Color(0xFFFFD700), modifier = Modifier.size(28.dp))
-                    Text(" Fantasy Sports", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Column {
+                    Text(
+                        "$greeting 👋",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        "SquadXI",
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 24.sp
+                    )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = Color.White.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(painterResource(R.drawable.baseline_key_24), null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
-                            Text(" $userCoins", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                // Coins badge — glowing gold
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Brush.horizontalGradient(listOf(Color(0xFFFFD700), Color(0xFFFFA000)))
+                        )
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🔑", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "$userCoins",
+                            color = Color.Black,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
                     }
-                    Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Gray))
                 }
             }
         }
@@ -447,6 +484,7 @@ fun HomeContent(
                 if (selectedSport == 0 && liveCount > 0) {
                     Box(
                         modifier = Modifier
+                            .graphicsLayer(scaleX = livePulseScale, scaleY = livePulseScale)
                             .clip(RoundedCornerShape(6.dp))
                             .background(Color(0xFFFF3D00))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -560,12 +598,22 @@ fun HomeContent(
                                                     .background(Color(0xFFFF3D00))
                                                     .padding(horizontal = 5.dp, vertical = 2.dp)
                                             ) {
-                                                Text(
-                                                    "● LIVE ${liveData?.get("minute")}′",
-                                                    color = Color.White,
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.ExtraBold
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(6.dp)
+                                                            .graphicsLayer(scaleX = livePulseScale, scaleY = livePulseScale)
+                                                            .clip(CircleShape)
+                                                            .background(Color.White)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        "LIVE ${liveData?.get("minute")}′",
+                                                        color = Color.White,
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.ExtraBold
+                                                    )
+                                                }
                                             }
                                         } else {
                                             Text(
@@ -1213,37 +1261,67 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 }
 
                 Box(
-                    modifier = Modifier.size(90.dp).clip(CircleShape)
-                        .clickable { launcher.launch("image/*") },
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(CircleShape)
+                        .background(Brush.sweepGradient(listOf(Color(0xFFFFD700), Color(0xFF8E2DE2), Color(0xFFFFD700))))
+                        .padding(3.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (profilePicUrl != null) {
-                        AsyncImage(
-                            model = profilePicUrl,
-                            contentDescription = "Profile Picture",
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxSize()
-                                .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(userName.take(1).uppercase(), fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+                    Box(
+                        modifier = Modifier.size(90.dp).clip(CircleShape)
+                            .clickable { launcher.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (profilePicUrl != null) {
+                            AsyncImage(
+                                model = profilePicUrl,
+                                contentDescription = "Profile Picture",
+                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                Color(0xFF8E2DE2),
+                                                Color(0xFF4A00E0)
+                                            )
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    userName.take(1).uppercase(),
+                                    fontSize = 36.sp,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
                         }
-                    }
-                    if (isUploading) {
-                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier.align(Alignment.BottomEnd).size(24.dp).clip(CircleShape)
-                                .background(Color(0xFF8E2DE2)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("📷", fontSize = 12.sp)
+                        if (isUploading) {
+                            Box(
+                                modifier = Modifier.fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier.align(Alignment.BottomEnd).size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF8E2DE2)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("📷", fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -1251,8 +1329,23 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 Text(userName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                 Text(userEmail, color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(6.dp))
-                Surface(color = Color(0xFF8E2DE2).copy(alpha = 0.3f), shape = RoundedCornerShape(20.dp)) {
-                    Text("$rankEmoji $rank", modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                val rankGradient = when (rank) {
+                    "Elite" -> listOf(Color(0xFFFFD700), Color(0xFFFFA000))
+                    "Pro"   -> listOf(Color(0xFFB0BEC5), Color(0xFF78909C))
+                    else    -> listOf(Color(0xFFCD7F32), Color(0xFF8D6E63))
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Brush.horizontalGradient(rankGradient))
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        "$rankEmoji $rank",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
                 }
             }
         }
