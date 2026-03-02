@@ -49,10 +49,16 @@ class DashboardActivity : ComponentActivity() {
 @Composable
 fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(0) }
     var footballTeamPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
     var cricketTeamPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
     var userCoins by remember { mutableStateOf(1250) }
+
+    // Start live score polling
+    LaunchedEffect(Unit) {
+        LiveScoreService.startPolling(scope)
+    }
 
     DisposableEffect(Unit) {
         val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -94,6 +100,7 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
             userRef.child("footballTeam").removeEventListener(footballListener)
             userRef.child("cricketTeam").removeEventListener(cricketListener)
             userRef.child("coins").removeEventListener(coinsListener)
+            LiveScoreService.stopPolling()
         }
     }
 
@@ -127,11 +134,18 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
             Image(
                 painter = painterResource(R.drawable.iphone), contentDescription = null,
                 modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black.copy(alpha = 0.55f), blendMode = androidx.compose.ui.graphics.BlendMode.Darken)
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
+                    Color.Black.copy(alpha = 0.55f),
+                    blendMode = androidx.compose.ui.graphics.BlendMode.Darken
+                )
             )
             Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 when (selectedTab) {
-                    0 -> HomeContent(footballTeamPlayers = footballTeamPlayers, cricketTeamPlayers = cricketTeamPlayers, userCoins = userCoins)
+                    0 -> HomeContent(
+                        footballTeamPlayers = footballTeamPlayers,
+                        cricketTeamPlayers = cricketTeamPlayers,
+                        userCoins = userCoins
+                    )
                     1 -> LeaguesContent()
                     2 -> AlertsContent()
                     3 -> ProfileContent(userName = userName, userEmail = userEmail, userCoins = userCoins)
@@ -144,21 +158,65 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
 // ─── HOME ─────────────────────────────────────────────────────────────────────
 
 @Composable
-fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<String>, userCoins: Int = 1250) {
+fun HomeContent(
+    footballTeamPlayers: List<String>,
+    cricketTeamPlayers: List<String>,
+    userCoins: Int = 1250
+) {
     val context = LocalContext.current
     var selectedSport by remember { mutableStateOf(0) }
 
-    // Real matches from API/Firebase — same source as MatchSelectionActivity
     var footballMatches by remember { mutableStateOf<List<Match>>(emptyList()) }
     var cricketMatches by remember { mutableStateOf<List<Match>>(emptyList()) }
     var isLoadingFootball by remember { mutableStateOf(true) }
     var isLoadingCricket by remember { mutableStateOf(true) }
 
+    // ── LIVE SCORES from Firebase ─────────────────────────────────────────────
+    var liveMatches by remember { mutableStateOf<Map<String, Map<String, Any>>>(
+        mapOf("9999" to mapOf(
+            "homeTeam" to "Bourne",
+            "awayTeam" to "Brentf",
+            "homeScore" to 2,
+            "awayScore" to 1,
+            "minute" to 67,
+            "status" to "IN_PLAY"
+        ))
+    ) }
+
+    DisposableEffect(Unit) {
+        val liveRef = com.google.firebase.database.FirebaseDatabase
+            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+            .getReference("liveMatches")
+
+        val liveListener = object : com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                if (!snapshot.hasChildren()) return  // ADD THIS - don't overwrite if Firebase is empty
+                val map = mutableMapOf<String, Map<String, Any>>()
+                snapshot.children.forEach { child ->
+                    map[child.key ?: ""] = mapOf(
+                        "homeTeam"  to (child.child("homeTeam").value?.toString() ?: ""),
+                        "awayTeam"  to (child.child("awayTeam").value?.toString() ?: ""),
+                        "homeScore" to ((child.child("homeScore").value as? Long)?.toInt() ?: 0),
+                        "awayScore" to ((child.child("awayScore").value as? Long)?.toInt() ?: 0),
+                        "minute"    to ((child.child("minute").value as? Long)?.toInt() ?: 0),
+                        "status"    to (child.child("status").value?.toString() ?: "")
+                    )
+                }
+                liveMatches = map
+            }
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+        }
+        liveRef.addValueEventListener(liveListener)
+        onDispose { liveRef.removeEventListener(liveListener) }
+    }
+
     val apiKey = "ab525c6736ef4253a78343b517589979"
 
     LaunchedEffect(Unit) {
         try {
-            val response = withContext(Dispatchers.IO) { FootballApi.service.getPLMatches(apiKey) }
+            val response = withContext(Dispatchers.IO) {
+                FootballApi.service.getPLMatches(apiKey)
+            }
             footballMatches = response.matches
                 .filter { it.status == "SCHEDULED" || it.status == "TIMED" }
                 .take(8)
@@ -173,7 +231,9 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
                         sport = "football"
                     )
                 }
-        } catch (e: Exception) { footballMatches = emptyList() }
+        } catch (e: Exception) {
+            footballMatches = emptyList()
+        }
         isLoadingFootball = false
     }
 
@@ -192,7 +252,17 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
                 val key = "$homeTeam-$awayTeam-$date"
                 if (key !in seen && homeTeam.isNotEmpty() && awayTeam.isNotEmpty()) {
                     seen.add(key)
-                    matches.add(Match(homeTeam = homeTeam, awayTeam = awayTeam, homeTeamId = 0, awayTeamId = 0, date = date, competition = competition, sport = "cricket"))
+                    matches.add(
+                        Match(
+                            homeTeam = homeTeam,
+                            awayTeam = awayTeam,
+                            homeTeamId = 0,
+                            awayTeamId = 0,
+                            date = date,
+                            competition = competition,
+                            sport = "cricket"
+                        )
+                    )
                 }
             }
             cricketMatches = matches
@@ -205,19 +275,34 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
     val currentMatches = if (selectedSport == 0) footballMatches else cricketMatches
     val isLoading = if (selectedSport == 0) isLoadingFootball else isLoadingCricket
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 100.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 100.dp)
+    ) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
 
-        // Header
+        // ── Header ────────────────────────────────────────────────────────────
         item {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.baseline_key_24), "trophy", tint = Color(0xFFFFD700), modifier = Modifier.size(28.dp))
                     Text(" Fantasy Sports", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(20.dp), modifier = Modifier.padding(end = 8.dp)) {
-                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Color.White.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(painterResource(R.drawable.baseline_key_24), null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
                             Text(" $userCoins", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
@@ -227,23 +312,45 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
             }
         }
 
-        // Sport Toggle
+        // ── Sport Toggle ──────────────────────────────────────────────────────
         item {
-            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50.dp)).background(Color.White.copy(alpha = 0.1f)).padding(4.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(Color.White.copy(alpha = 0.1f))
+                    .padding(4.dp)
+            ) {
                 listOf("⚽  Football", "🏏  Cricket").forEachIndexed { index, label ->
                     Box(
-                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(50.dp))
-                            .background(if (selectedSport == index) Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))) else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)))
-                            .clickable { selectedSport = index }.padding(vertical = 10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(
+                                if (selectedSport == index)
+                                    Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
+                                else
+                                    Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                            )
+                            .clickable { selectedSport = index }
+                            .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
-                    ) { Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                    ) {
+                        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
                 }
             }
         }
 
-        // My Team Card
+        // ── My Team Card ──────────────────────────────────────────────────────
         item {
-            Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF1565C0), Color(0xFF8E2DE2)))).padding(16.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF1565C0), Color(0xFF8E2DE2))))
+                    .padding(16.dp)
+            ) {
                 Column {
                     Text("My $currentSportLabel Team", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(4.dp))
@@ -252,105 +359,289 @@ fun HomeContent(footballTeamPlayers: List<String>, cricketTeamPlayers: List<Stri
                         Spacer(modifier = Modifier.height(4.dp))
                         Text("Tap Create Team to get started", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
                     } else {
-                        Text("$currentSportLabel • ${currentTeamPlayers.size} Players", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                        Text(
+                            "$currentSportLabel • ${currentTeamPlayers.size} Players",
+                            color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(currentTeamPlayers.joinToString(", "), color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.2f)).clickable {
-                                val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                                val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
-                                com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-                                    .getReference("Users").child(userId).child(sportNode).get().addOnSuccessListener { snapshot ->
-                                        val intent = Intent(context, CreateTeamActivity::class.java).apply {
-                                            putExtra("sport", if (selectedSport == 0) "football" else "cricket")
-                                            putExtra("homeTeamName", snapshot.child("homeTeamName").value?.toString() ?: "")
-                                            putExtra("awayTeamName", snapshot.child("awayTeamName").value?.toString() ?: "")
-                                            putExtra("homeTeamId", (snapshot.child("homeTeamId").value as? Long)?.toInt() ?: 0)
-                                            putExtra("awayTeamId", (snapshot.child("awayTeamId").value as? Long)?.toInt() ?: 0)
-                                            putExtra("editMode", true)
-                                            putExtra("editSport", currentSportLabel)
-                                        }
-                                        context.startActivity(intent)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                                    .clickable {
+                                        val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                        val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
+                                        com.google.firebase.database.FirebaseDatabase
+                                            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                            .getReference("Users").child(userId).child(sportNode)
+                                            .get().addOnSuccessListener { snapshot ->
+                                                val intent = Intent(context, CreateTeamActivity::class.java).apply {
+                                                    putExtra("sport", if (selectedSport == 0) "football" else "cricket")
+                                                    putExtra("homeTeamName", snapshot.child("homeTeamName").value?.toString() ?: "")
+                                                    putExtra("awayTeamName", snapshot.child("awayTeamName").value?.toString() ?: "")
+                                                    putExtra("homeTeamId", (snapshot.child("homeTeamId").value as? Long)?.toInt() ?: 0)
+                                                    putExtra("awayTeamId", (snapshot.child("awayTeamId").value as? Long)?.toInt() ?: 0)
+                                                    putExtra("editMode", true)
+                                                    putExtra("editSport", currentSportLabel)
+                                                }
+                                                context.startActivity(intent)
+                                            }
                                     }
-                            }.padding(horizontal = 16.dp, vertical = 8.dp)) { Text("✏️ Edit Team", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFFF5F6D).copy(alpha = 0.7f)).clickable {
-                                val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                                val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
-                                com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-                                    .getReference("Users").child(userId).child(sportNode).removeValue()
-                                android.widget.Toast.makeText(context, "🗑️ Team deleted!", android.widget.Toast.LENGTH_SHORT).show()
-                            }.padding(horizontal = 16.dp, vertical = 8.dp)) { Text("🗑️ Delete", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text("✏️ Edit Team", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFFF5F6D).copy(alpha = 0.7f))
+                                    .clickable {
+                                        val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                        val sportNode = if (selectedSport == 0) "footballTeam" else "cricketTeam"
+                                        com.google.firebase.database.FirebaseDatabase
+                                            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+                                            .getReference("Users").child(userId).child(sportNode).removeValue()
+                                        android.widget.Toast.makeText(context, "🗑️ Team deleted!", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text("🗑️ Delete", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Action Cards
+        // ── Action Cards ──────────────────────────────────────────────────────
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                BigActionCard("Create Team", "Build Your Squad", listOf(Color(0xFFFF5F6D), Color(0xFFFFC371)), Modifier.weight(1f)) {
-                    context.startActivity(Intent(context, MatchSelectionActivity::class.java))
-                }
-                BigActionCard("Join Contest", "Enter & Compete", listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)), Modifier.weight(1f)) {
-                    context.startActivity(Intent(context, ContestActivity::class.java).apply { putExtra("sport", currentSportLabel) })
+                BigActionCard(
+                    "Create Team", "Build Your Squad",
+                    listOf(Color(0xFFFF5F6D), Color(0xFFFFC371)),
+                    Modifier.weight(1f)
+                ) { context.startActivity(Intent(context, MatchSelectionActivity::class.java)) }
+
+                BigActionCard(
+                    "Join Contest", "Enter & Compete",
+                    listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)),
+                    Modifier.weight(1f)
+                ) {
+                    context.startActivity(
+                        Intent(context, ContestActivity::class.java).apply {
+                            putExtra("sport", currentSportLabel)
+                        }
+                    )
                 }
             }
         }
 
-        // Upcoming Matches — REAL, CLICKABLE
+        // ── Upcoming / Live Matches ───────────────────────────────────────────
         item {
-            Text(if (selectedSport == 0) "⚽ Upcoming Matches" else "🏏 Upcoming Matches", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            val liveCount = if (selectedSport == 0) liveMatches.size else 0
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (selectedSport == 0) "⚽ Upcoming Matches" else "🏏 Upcoming Matches",
+                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp
+                )
+                if (selectedSport == 0 && liveCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFFFF3D00))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("$liveCount LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
         }
 
         item {
             if (isLoading) {
-                Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CircularProgressIndicator(color = Color(0xFF8E2DE2), modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         Text("Loading matches...", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
                     }
                 }
             } else if (currentMatches.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().height(80.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.07f)), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(80.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.07f)),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text("No matches available", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
                 }
             } else {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(currentMatches) { match ->
+
+                        // ── Check if this match is LIVE ───────────────────────
+                        val liveData = if (selectedSport == 0) {
+                            liveMatches.values.firstOrNull { data ->
+                                val lh = (data["homeTeam"] as? String)?.lowercase() ?: ""
+                                val la = (data["awayTeam"] as? String)?.lowercase() ?: ""
+                                val mh = match.homeTeam.lowercase()
+                                val ma = match.awayTeam.lowercase()
+                                lh == mh || la == ma || mh.contains(lh) || lh.contains(mh)
+                            }
+                        } else null
+                        val isLive = liveData != null
+
                         Card(
-                            modifier = Modifier.width(200.dp).height(120.dp).clickable {
-                                // Tap opens CreateTeamActivity for this specific match
-                                context.startActivity(Intent(context, CreateTeamActivity::class.java).apply {
-                                    putExtra("sport", match.sport)
-                                    putExtra("homeTeamId", match.homeTeamId)
-                                    putExtra("awayTeamId", match.awayTeamId)
-                                    putExtra("homeTeamName", match.homeTeam)
-                                    putExtra("awayTeamName", match.awayTeam)
-                                })
-                            },
+                            modifier = Modifier
+                                .width(200.dp)
+                                .height(if (isLive) 140.dp else 120.dp)
+                                .clickable {
+                                    context.startActivity(
+                                        Intent(context, CreateTeamActivity::class.java).apply {
+                                            putExtra("sport", match.sport)
+                                            putExtra("homeTeamId", match.homeTeamId)
+                                            putExtra("awayTeamId", match.awayTeamId)
+                                            putExtra("homeTeamName", match.homeTeam)
+                                            putExtra("awayTeamName", match.awayTeam)
+                                        }
+                                    )
+                                },
                             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                             shape = RoundedCornerShape(14.dp)
                         ) {
                             Box(
-                                modifier = Modifier.fillMaxSize()
-                                    .background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.13f))))
-                                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        if (isLive)
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color(0xFF1B5E20).copy(alpha = 0.5f),
+                                                    Color(0xFF388E3C).copy(alpha = 0.4f)
+                                                )
+                                            )
+                                        else
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color.White.copy(alpha = 0.08f),
+                                                    Color.White.copy(alpha = 0.13f)
+                                                )
+                                            )
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isLive) Color(0xFF38ef7d).copy(alpha = 0.6f)
+                                        else Color.White.copy(alpha = 0.18f),
+                                        RoundedCornerShape(14.dp)
+                                    )
                                     .padding(12.dp)
                             ) {
-                                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(match.competition, color = Color(0xFF8E2DE2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                        Text(match.date, color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp)
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    // Top row — competition + live badge or date
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            match.competition,
+                                            color = Color(0xFF8E2DE2),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (isLive) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0xFFFF3D00))
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    "● LIVE ${liveData?.get("minute")}′",
+                                                    color = Color.White,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
+                                        } else {
+                                            Text(
+                                                match.date,
+                                                color = Color.White.copy(alpha = 0.4f),
+                                                fontSize = 9.sp
+                                            )
+                                        }
                                     }
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                                        Text(match.homeTeam.take(6), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-                                        Text("VS", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp))
-                                        Text(match.awayTeam.take(6), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+
+                                    // Middle row — teams + score or VS
+                                    if (isLive) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    match.homeTeam.take(6),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 12.sp,
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Text(
+                                                    "${liveData?.get("homeScore")} - ${liveData?.get("awayScore")}",
+                                                    color = Color(0xFF38ef7d),
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 20.sp
+                                                )
+                                                Text(
+                                                    match.awayTeam.take(6),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 12.sp,
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(match.homeTeam.take(6), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                                            Text("VS", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp))
+                                            Text(match.awayTeam.take(6), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                                        }
                                     }
-                                    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))).padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
-                                        Text("Tap to Pick Team →", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+
+                                    // Bottom CTA button
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
+                                                )
+                                            )
+                                            .padding(vertical = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            if (isLive) "🔥 Live — Pick Team →" else "Tap to Pick Team →",
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }
@@ -380,7 +671,9 @@ fun LeaguesContent() {
     var selectedSport by remember { mutableStateOf(0) }
 
     DisposableEffect(Unit) {
-        val db = com.google.firebase.database.FirebaseDatabase.getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com").getReference("contests")
+        val db = com.google.firebase.database.FirebaseDatabase
+            .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
+            .getReference("contests")
         val listener = object : com.google.firebase.database.ValueEventListener {
             override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                 val list = mutableListOf<JoinedContest>()
@@ -392,7 +685,20 @@ fun LeaguesContent() {
                         val myScore = (child.child("result").child("scores").child(userId).value as? Long)?.toInt() ?: 0
                         val opponentId = joinedUsers.children.firstOrNull { it.key != userId }?.key ?: ""
                         val opponentScore = (child.child("result").child("scores").child(opponentId).value as? Long)?.toInt() ?: 0
-                        list.add(JoinedContest(child.key ?: "", child.child("name").value?.toString() ?: "", child.child("sport").value?.toString() ?: "", child.child("matchName").value?.toString() ?: "", myScore, opponentScore, (child.child("prizeCoins").value as? Long)?.toInt() ?: 0, (child.child("entryCoins").value as? Long)?.toInt() ?: 0, isResolved, isResolved && winnerId == userId, !isResolved && joinedUsers.childrenCount < 2))
+                        list.add(
+                            JoinedContest(
+                                child.key ?: "",
+                                child.child("name").value?.toString() ?: "",
+                                child.child("sport").value?.toString() ?: "",
+                                child.child("matchName").value?.toString() ?: "",
+                                myScore, opponentScore,
+                                (child.child("prizeCoins").value as? Long)?.toInt() ?: 0,
+                                (child.child("entryCoins").value as? Long)?.toInt() ?: 0,
+                                isResolved,
+                                isResolved && winnerId == userId,
+                                !isResolved && joinedUsers.childrenCount < 2
+                            )
+                        )
                     }
                 }
                 joinedContests = list.sortedByDescending { it.isResolved }
@@ -404,27 +710,54 @@ fun LeaguesContent() {
         onDispose { db.removeEventListener(listener) }
     }
 
-    val filtered = joinedContests.filter { if (selectedSport == 0) it.sport == "Football" else it.sport == "Cricket" }
+    val filtered = joinedContests.filter {
+        if (selectedSport == 0) it.sport == "Football" else it.sport == "Cricket"
+    }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 20.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 20.dp)
+    ) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("🏆 My Contests", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                 if (!isLoading) Text("${joinedContests.size} total", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
             }
         }
         item {
-            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50.dp)).background(Color.White.copy(alpha = 0.1f)).padding(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50.dp))
+                    .background(Color.White.copy(alpha = 0.1f)).padding(4.dp)
+            ) {
                 listOf("⚽  Football", "🏏  Cricket").forEachIndexed { index, label ->
-                    Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(50.dp)).background(if (selectedSport == index) Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))) else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))).clickable { selectedSport = index }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(50.dp))
+                            .background(
+                                if (selectedSport == index)
+                                    Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
+                                else
+                                    Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                            )
+                            .clickable { selectedSport = index }.padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             }
         }
         if (isLoading) {
-            item { Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color(0xFF8E2DE2)) } }
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF8E2DE2))
+                }
+            }
         } else if (filtered.isEmpty()) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
@@ -445,29 +778,89 @@ fun LeaguesContent() {
 
 @Composable
 fun JoinedContestCard(contest: JoinedContest) {
-    val statusColor = when { contest.waitingForOpponent -> Color(0xFFFFE082); contest.iWon -> Color(0xFF38ef7d); contest.isResolved -> Color(0xFFFF5F6D); else -> Color(0xFFFFE082) }
-    val statusText = when { contest.waitingForOpponent -> "⏳ Waiting for opponent"; contest.iWon -> "🏆 You Won!"; contest.isResolved -> "😔 You Lost"; else -> "🎮 In Progress" }
+    val statusColor = when {
+        contest.waitingForOpponent -> Color(0xFFFFE082)
+        contest.iWon -> Color(0xFF38ef7d)
+        contest.isResolved -> Color(0xFFFF5F6D)
+        else -> Color(0xFFFFE082)
+    }
+    val statusText = when {
+        contest.waitingForOpponent -> "⏳ Waiting for opponent"
+        contest.iWon -> "🏆 You Won!"
+        contest.isResolved -> "😔 You Lost"
+        else -> "🎮 In Progress"
+    }
 
-    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.12f)))).border(1.dp, if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.4f) else if (contest.isResolved && !contest.iWon) Color(0xFFFF5F6D).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp)).padding(16.dp)) {
+    Box(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.12f))))
+            .border(
+                1.dp,
+                if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.4f)
+                else if (contest.isResolved && !contest.iWon) Color(0xFFFF5F6D).copy(alpha = 0.4f)
+                else Color.White.copy(alpha = 0.15f),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(16.dp)
+    ) {
         Column {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column { Text(contest.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp); Text(contest.matchName, color = Color(0xFF8E2DE2), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(statusColor.copy(alpha = 0.15f)).border(1.dp, statusColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) { Text(statusText, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(contest.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text(contest.matchName, color = Color(0xFF8E2DE2), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Box(
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                        .background(statusColor.copy(alpha = 0.15f))
+                        .border(1.dp, statusColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(statusText, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
             }
             if (contest.isResolved) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Your Score", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp); Text("${contest.myScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("VS", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp) }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Opponent", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp); Text("${contest.opponentScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Your Score", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
+                        Text("${contest.myScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("VS", color = Color(0xFFFFE082), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Opponent", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
+                        Text("${contest.opponentScore}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                    }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.15f) else Color(0xFFFF5F6D).copy(alpha = 0.15f)).padding(8.dp), contentAlignment = Alignment.Center) {
-                    Text(if (contest.iWon) "🎉 Won +${contest.prizeCoins} coins!" else "Entry: ${contest.entryCoins} coins", color = if (contest.iWon) Color(0xFF38ef7d) else Color(0xFFFF5F6D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (contest.iWon) Color(0xFF38ef7d).copy(alpha = 0.15f)
+                            else Color(0xFFFF5F6D).copy(alpha = 0.15f)
+                        )
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (contest.iWon) "🎉 Won +${contest.prizeCoins} coins!"
+                        else "Entry: ${contest.entryCoins} coins",
+                        color = if (contest.iWon) Color(0xFF38ef7d) else Color(0xFFFF5F6D),
+                        fontWeight = FontWeight.Bold, fontSize = 13.sp
+                    )
                 }
             } else if (contest.waitingForOpponent) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Entry paid: 🔑 ${contest.entryCoins} • Prize pool: 🏆 ${contest.prizeCoins}", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
+                Text(
+                    "Entry paid: 🔑 ${contest.entryCoins} • Prize pool: 🏆 ${contest.prizeCoins}",
+                    color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp
+                )
             }
         }
     }
@@ -480,30 +873,20 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
     val context = LocalContext.current
     val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    // Stats state
     var contestsPlayed by remember { mutableStateOf(0) }
     var contestsWon by remember { mutableStateOf(0) }
     var bestScore by remember { mutableStateOf(0) }
     var footballContestsPlayed by remember { mutableStateOf(0) }
     var cricketContestsPlayed by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(true) }
-
-    // Settings sheet state
     var activeSheet by remember { mutableStateOf<String?>(null) }
-
-    // Notification prefs (stored in Firebase)
     var notifContests by remember { mutableStateOf(true) }
     var notifResults by remember { mutableStateOf(true) }
     var notifPromos by remember { mutableStateOf(false) }
-
-    // Appearance prefs
     var selectedTheme by remember { mutableStateOf("Dark") }
-
-    // Privacy prefs
     var analyticsEnabled by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        // Load stats
         val db = com.google.firebase.database.FirebaseDatabase
             .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
             .getReference("contests")
@@ -528,7 +911,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
             isLoading = false
         }
 
-        // Load notification prefs from Firebase
         val userRef = com.google.firebase.database.FirebaseDatabase
             .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
             .getReference("Users").child(userId).child("settings")
@@ -546,8 +928,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
     val rankEmoji = when (rank) { "Elite" -> "👑"; "Pro" -> "⭐"; "Rookie" -> "🎮"; else -> "🆕" }
 
     // ── Bottom Sheets ──────────────────────────────────────────────────────────
-
-    // NOTIFICATIONS SHEET
     if (activeSheet == "Notifications") {
         ModalBottomSheet(
             onDismissRequest = { activeSheet = null },
@@ -561,14 +941,14 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
             ) {
                 Text("🔔 Notifications", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
                 Divider(color = Color.White.copy(alpha = 0.1f))
-
                 val toggles = listOf(
                     Triple("Contest Alerts", "Notify when new contests open", notifContests),
                     Triple("Match Results", "Notify when your match result is out", notifResults),
                     Triple("Promotions", "Bonus coins & special offers", notifPromos)
                 )
-                toggles.forEachIndexed { i, (title, subtitle, state) ->
+                toggles.forEachIndexed { i, _ ->
                     val current = when (i) { 0 -> notifContests; 1 -> notifResults; else -> notifPromos }
+                    val (title, subtitle, _) = toggles[i]
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                             .background(Color.White.copy(alpha = 0.07f)).padding(16.dp),
@@ -582,12 +962,7 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                         Switch(
                             checked = current,
                             onCheckedChange = { value ->
-                                when (i) {
-                                    0 -> { notifContests = value }
-                                    1 -> { notifResults = value }
-                                    2 -> { notifPromos = value }
-                                }
-                                // Save to Firebase
+                                when (i) { 0 -> notifContests = value; 1 -> notifResults = value; 2 -> notifPromos = value }
                                 com.google.firebase.database.FirebaseDatabase
                                     .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
                                     .getReference("Users").child(userId).child("settings")
@@ -595,10 +970,8 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                                     .setValue(value)
                             },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF8E2DE2),
-                                uncheckedThumbColor = Color.Gray,
-                                uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
+                                checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF8E2DE2),
+                                uncheckedThumbColor = Color.Gray, uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
                             )
                         )
                     }
@@ -614,7 +987,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
         }
     }
 
-    // PRIVACY SHEET
     if (activeSheet == "Privacy") {
         ModalBottomSheet(
             onDismissRequest = { activeSheet = null },
@@ -628,8 +1000,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
             ) {
                 Text("🔒 Privacy", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
                 Divider(color = Color.White.copy(alpha = 0.1f))
-
-                // Info rows (non-clickable)
                 listOf(
                     "🛡️  Your data is stored securely on Firebase" to "End-to-end encrypted user data",
                     "👤  Profile visibility" to "Only contest participants can see your score"
@@ -645,8 +1015,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                         }
                     }
                 }
-
-                // Analytics toggle
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.07f)).padding(16.dp),
@@ -667,15 +1035,11 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                                 .child("analyticsEnabled").setValue(value)
                         },
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF8E2DE2),
-                            uncheckedThumbColor = Color.Gray,
-                            uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
+                            checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF8E2DE2),
+                            uncheckedThumbColor = Color.Gray, uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
                         )
                     )
                 }
-
-                // Delete Account
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFFFF5F6D).copy(alpha = 0.1f))
@@ -693,8 +1057,7 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                     })
                                 }
-                                .setNegativeButton("Cancel", null)
-                                .show()
+                                .setNegativeButton("Cancel", null).show()
                         }
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -710,7 +1073,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
         }
     }
 
-    // APPEARANCE SHEET
     if (activeSheet == "Appearance") {
         ModalBottomSheet(
             onDismissRequest = { activeSheet = null },
@@ -725,28 +1087,17 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 Text("🎨 Appearance", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
                 Divider(color = Color.White.copy(alpha = 0.1f))
                 Text("Theme", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                val themes = listOf(
-                    "Dark" to "🌑  Dark Mode",
-                    "Purple" to "💜  Purple Glow",
-                    "Blue" to "💙  Ocean Blue"
-                )
-                themes.forEach { (key, label) ->
+                listOf("Dark" to "🌑  Dark Mode", "Purple" to "💜  Purple Glow", "Blue" to "💙  Ocean Blue").forEach { (key, label) ->
                     val isSelected = selectedTheme == key
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                             .background(if (isSelected) Color(0xFF8E2DE2).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.07f))
-                            .border(
-                                1.dp,
-                                if (isSelected) Color(0xFF8E2DE2) else Color.Transparent,
-                                RoundedCornerShape(12.dp)
-                            )
+                            .border(1.dp, if (isSelected) Color(0xFF8E2DE2) else Color.Transparent, RoundedCornerShape(12.dp))
                             .clickable {
                                 selectedTheme = key
                                 com.google.firebase.database.FirebaseDatabase
                                     .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
-                                    .getReference("Users").child(userId).child("settings").child("theme")
-                                    .setValue(key)
+                                    .getReference("Users").child(userId).child("settings").child("theme").setValue(key)
                             }
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -756,25 +1107,19 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                         if (isSelected) Text("✓", color = Color(0xFF8E2DE2), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
                 Box(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.07f)).padding(16.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("ℹ️", fontSize = 18.sp)
-                        Text(
-                            "Theme changes will apply on next app restart.",
-                            color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp
-                        )
+                        Text("Theme changes will apply on next app restart.", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
                     }
                 }
             }
         }
     }
 
-    // HELP & SUPPORT SHEET
     if (activeSheet == "Help") {
         ModalBottomSheet(
             onDismissRequest = { activeSheet = null },
@@ -788,21 +1133,18 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
             ) {
                 Text("❓ Help & Support", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp))
                 Divider(color = Color.White.copy(alpha = 0.1f))
-
-                val faqs = listOf(
+                listOf(
                     "How do I create a team?" to "Tap 'Create Team' on the Home screen, select a match, then pick your players.",
                     "How are scores calculated?" to "Players earn points based on real match performance — goals, assists, wickets, and more.",
                     "When do I get my coins?" to "Coins are awarded automatically after a contest is resolved.",
                     "How do I join a contest?" to "Tap 'Join Contest' on Home, select your sport, and enter with your coins.",
                     "My coins are missing?" to "Coins update in real-time. Pull to refresh or restart the app."
-                )
-                faqs.forEach { (question, answer) ->
+                ).forEach { (question, answer) ->
                     var expanded by remember { mutableStateOf(false) }
                     Column(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                             .background(Color.White.copy(alpha = 0.07f))
-                            .clickable { expanded = !expanded }
-                            .padding(16.dp)
+                            .clickable { expanded = !expanded }.padding(16.dp)
                     ) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(question, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -814,9 +1156,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-                // Contact Us Button
                 Box(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                         .background(Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))))
@@ -840,14 +1179,11 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
     }
 
     // ── Main Profile UI ────────────────────────────────────────────────────────
-
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
-
-        // Avatar
         item {
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
@@ -866,8 +1202,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 }
             }
         }
-
-        // Stats Row
         item {
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(24.dp), contentAlignment = Alignment.Center) {
@@ -875,7 +1209,8 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 }
             } else {
                 Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f)).padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.08f)).padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     StatItem("🔑 $userCoins", "Coins")
@@ -886,15 +1221,15 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 }
             }
         }
-
-        // Win Rate Card
         item {
             Box(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                    .background(Brush.horizontalGradient(
-                        if (winRate >= 50) listOf(Color(0xFF11998e), Color(0xFF38ef7d))
-                        else listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
-                    )).padding(16.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            if (winRate >= 50) listOf(Color(0xFF11998e), Color(0xFF38ef7d))
+                            else listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
+                        )
+                    ).padding(16.dp)
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
@@ -906,8 +1241,6 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 }
             }
         }
-
-        // Sport Stats
         item { Text("⚽ Football Stats", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -922,13 +1255,10 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                 MiniStatCard("$cricketContestsPlayed", "Contests", Color(0xFFf7971e), Color(0xFFffd200), Modifier.weight(1f))
             }
         }
-
-        // Settings
         item { Text("Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 data class SettingsOption(val label: String, val sheetKey: String?)
-
                 val options = listOf(
                     SettingsOption("🔔  Notifications", "Notifications"),
                     SettingsOption("🔒  Privacy", "Privacy"),
@@ -936,24 +1266,16 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                     SettingsOption("❓  Help & Support", "Help"),
                     SettingsOption("🚪  Logout", null)
                 )
-
                 options.forEach { option ->
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (option.label.contains("Logout"))
-                                    Color(0xFFFF5F6D).copy(alpha = 0.1f)
-                                else Color.White.copy(alpha = 0.07f)
-                            )
+                            .background(if (option.label.contains("Logout")) Color(0xFFFF5F6D).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.07f))
                             .clickable {
                                 if (option.sheetKey == null) {
-                                    // Logout
                                     com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
-                                    context.startActivity(
-                                        Intent(context, LoginAct::class.java).apply {
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                        }
-                                    )
+                                    context.startActivity(Intent(context, LoginAct::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    })
                                 } else {
                                     activeSheet = option.sheetKey
                                 }
@@ -970,8 +1292,7 @@ fun ProfileContent(userName: String = "Player", userEmail: String = "", userCoin
                         )
                         Text(
                             "›",
-                            color = if (option.label.contains("Logout")) Color(0xFFFF5F6D).copy(alpha = 0.6f)
-                            else Color.White.copy(alpha = 0.4f),
+                            color = if (option.label.contains("Logout")) Color(0xFFFF5F6D).copy(alpha = 0.6f) else Color.White.copy(alpha = 0.4f),
                             fontSize = 20.sp
                         )
                     }
@@ -1002,7 +1323,12 @@ fun BigActionCard(title: String, sub: String, gradient: List<Color>, modifier: M
 
 @Composable
 fun MatchCard(league: String = "IPL T20", teams: String = "IND vs AUS", time: String = "03:15:20") {
-    Card(modifier = Modifier.width(180.dp).height(110.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))) {
+    Card(
+        modifier = Modifier.width(180.dp).height(110.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+    ) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(league, color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
             Spacer(modifier = Modifier.height(4.dp))
@@ -1032,7 +1358,6 @@ fun AlertsContent() {
         val db = com.google.firebase.database.FirebaseDatabase
             .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")
             .getReference("contests")
-
         db.get().addOnSuccessListener { snapshot ->
             val list = mutableListOf<Triple<String, String, String>>()
             snapshot.children.forEach { child ->
@@ -1042,13 +1367,9 @@ fun AlertsContent() {
                 val entryCoins = (child.child("entryCoins").value as? Long)?.toInt() ?: 0
                 val prizeCoins = (child.child("prizeCoins").value as? Long)?.toInt() ?: 0
                 val joinedCount = child.child("joinedUsers").childrenCount
-
                 val sportEmoji = if (sport == "Football") "⚽ Football" else "🏏 Cricket"
                 val description = "$matchName — Entry: $entryCoins coins | Prize: $prizeCoins coins | ${joinedCount} joined"
-
-                if (name.isNotEmpty()) {
-                    list.add(Triple(sportEmoji, "$name\n$description", "Live"))
-                }
+                if (name.isNotEmpty()) list.add(Triple(sportEmoji, "$name\n$description", "Live"))
             }
             contests = list
             isLoading = false
@@ -1062,16 +1383,11 @@ fun AlertsContent() {
     ) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("🔔 Alerts", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                 if (!isLoading) Text("${contests.size} active", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
             }
         }
-
         if (isLoading) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
@@ -1092,8 +1408,7 @@ fun AlertsContent() {
         } else {
             items(contests) { alert ->
                 Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                         .background(Color.White.copy(alpha = 0.08f))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
                         .padding(14.dp),
@@ -1105,7 +1420,6 @@ fun AlertsContent() {
                             .background(Brush.verticalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))),
                         contentAlignment = Alignment.Center
                     ) { Text("🎯", fontSize = 20.sp) }
-
                     Column(modifier = Modifier.weight(1f)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(alert.first, color = Color(0xFFFFE082), fontSize = 11.sp, fontWeight = FontWeight.Bold)

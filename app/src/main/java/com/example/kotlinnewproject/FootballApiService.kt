@@ -5,6 +5,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 // Teams
 data class TeamResponse(val teams: List<Team>)
@@ -25,6 +26,25 @@ data class ApiMatch(
 )
 data class MatchTeam(val id: Int, val name: String, val shortName: String?)
 
+// Live Matches
+data class LiveMatchResponse(val matches: List<LiveApiMatch>)
+data class LiveApiMatch(
+    val id: Int,
+    val status: String,
+    val minute: Int?,
+    val homeTeam: MatchTeam,
+    val awayTeam: MatchTeam,
+    val score: LiveScore
+)
+data class LiveScore(
+    val fullTime: ScoreDetail,
+    val halfTime: ScoreDetail
+)
+data class ScoreDetail(
+    val home: Int?,
+    val away: Int?
+)
+
 // API interface
 interface FootballApiService {
     @GET("competitions/PL/teams")
@@ -42,6 +62,12 @@ interface FootballApiService {
     suspend fun getPLMatches(
         @Header("X-Auth-Token") token: String
     ): MatchResponse
+
+    @GET("matches")
+    suspend fun getLiveMatches(
+        @Header("X-Auth-Token") token: String,
+        @Query("status") status: String = "IN_PLAY"
+    ): LiveMatchResponse
 }
 
 // Retrofit instance
