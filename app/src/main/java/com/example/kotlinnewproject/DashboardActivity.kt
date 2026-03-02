@@ -58,7 +58,7 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
 
     // Start live score polling
     LaunchedEffect(Unit) {
-        LiveScoreService.startPolling(scope)
+
     }
 
     DisposableEffect(Unit) {
@@ -101,7 +101,7 @@ fun DashboardScreen(userName: String = "Player", userEmail: String = "") {
             userRef.child("footballTeam").removeEventListener(footballListener)
             userRef.child("cricketTeam").removeEventListener(cricketListener)
             userRef.child("coins").removeEventListener(coinsListener)
-            LiveScoreService.stopPolling()
+
         }
     }
 
@@ -173,17 +173,7 @@ fun HomeContent(
     var isLoadingCricket by remember { mutableStateOf(true) }
 
     // ── LIVE SCORES from Firebase ─────────────────────────────────────────────
-    var liveMatches by remember { mutableStateOf<Map<String, Map<String, Any>>>(
-        mapOf("9999" to mapOf(
-            "homeTeam" to "Bourne",
-            "awayTeam" to "Brentf",
-            "homeScore" to 2,
-            "awayScore" to 1,
-            "minute" to 67,
-            "status" to "IN_PLAY"
-        ))
-    ) }
-
+    var liveMatches by remember { mutableStateOf<Map<String, Map<String, Any>>>(emptyMap()) }
     DisposableEffect(Unit) {
         val liveRef = com.google.firebase.database.FirebaseDatabase
             .getInstance("https://indvidual-ce210-default-rtdb.firebaseio.com")

@@ -43,8 +43,8 @@ data class Player(
 // ─── Position limits ────────────────────────────────────────────────────────
 // Football: 1 GK, 3-5 DEF, 3-5 MID, 1-3 FWD (must total 11)
 // Cricket:  1 WK, 3-5 BAT, 1-4 AR, 3-5 BOWL (must total 11)
-val footballLimits = mapOf("GK" to 1, "DEF" to 3, "MID" to 5, "FWD" to 3)
-val footballMinimums = mapOf("GK" to 1, "DEF" to 2, "MID" to 3, "FWD" to 1)
+val footballLimits = mapOf("GK" to 1, "DEF" to 1, "MID" to 6, "FWD" to 3)
+val footballMinimums = mapOf("GK" to 1, "DEF" to 1, "MID" to 3, "FWD" to 1)
 val cricketLimits = mapOf("WK" to 1, "BAT" to 5, "AR" to 4, "BOWL" to 5)
 val cricketMinimums = mapOf("WK" to 1, "BAT" to 3, "AR" to 1, "BOWL" to 3)
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 
 class AdminActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,6 +74,7 @@ fun AdminScreen() {
             .background(Color(0xFF0D0D1A))
     ) {
         // Header
+        val context = LocalContext.current
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -81,9 +83,31 @@ fun AdminScreen() {
                 )
                 .padding(top = 48.dp, bottom = 16.dp, start = 20.dp, end = 20.dp)
         ) {
-            Column {
-                Text("🛡️ Admin Panel", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
-                Text("Manage your app", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("🛡️ Admin Panel", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
+                    Text("Manage your app", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.2f))
+                        .clickable {
+                            com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                            context.startActivity(
+                                android.content.Intent(context, LoginAct::class.java).apply {
+                                    flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                }
+                            )
+                        }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text("🚪 Logout", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
